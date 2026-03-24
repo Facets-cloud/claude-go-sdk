@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // --- buildProcessArgs tests ---
@@ -372,18 +373,8 @@ func TestProcessManager_WriteJSON(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pm := newProcessManager(fp, ctx, nil)
-
-	// Close stdout so message reader finishes immediately.
-	fp.stdoutW.Close()
-
-	msg := SDKControlRequest{
-		Type:      "control_request",
-		RequestID: "req-1",
-		Request:   json.RawMessage(`{"subtype":"interrupt"}`),
-	}
-
-	// Read from stdin pipe in a goroutine to unblock the write.
+	// Read from stdin pipe in a goroutine BEFORE creating processManager,
+	// to ensure the reader is ready before any writes happen.
 	done := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(fp.stdinR)
@@ -394,14 +385,38 @@ func TestProcessManager_WriteJSON(t *testing.T) {
 		}
 	}()
 
+	pm := newProcessManager(fp, ctx, nil)
+
+	// Close stdout so message reader goroutine finishes immediately.
+	fp.stdoutW.Close()
+
+	// Drain the messages channel to let readStdout finish and close it.
+	go func() {
+		for range pm.Messages() {
+		}
+	}()
+
+	// Give readStdout goroutine a moment to finish.
+	time.Sleep(10 * time.Millisecond)
+
+	msg := SDKControlRequest{
+		Type:      "control_request",
+		RequestID: "req-1",
+		Request:   json.RawMessage(`{"subtype":"interrupt"}`),
+	}
+
 	err := pm.WriteJSON(msg)
 	if err != nil {
 		t.Fatalf("WriteJSON: %v", err)
 	}
 
-	line := <-done
-	if !strings.Contains(line, "control_request") {
-		t.Errorf("stdin line should contain 'control_request', got %q", line)
+	select {
+	case line := <-done:
+		if !strings.Contains(line, "control_request") {
+			t.Errorf("stdin line should contain 'control_request', got %q", line)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for stdin write")
 	}
 }
 
