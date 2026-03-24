@@ -1,3 +1,11 @@
 references/
 package/
 *.tgz
+.idea/
+coverage.out
+basic
+custom_tools
+hooks
+permissions
+session_management
+streaming
