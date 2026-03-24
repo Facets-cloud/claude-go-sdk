@@ -530,3 +530,13 @@ type SDKRawMessage struct {
 
 func (m *SDKRawMessage) sdkMessage()        {}
 func (m *SDKRawMessage) MessageType() string { return m.RawType }
+
+// IsResultMessage returns true if the given SDKMessage is a result message
+// (either *SDKResultSuccess or *SDKResultError).
+func IsResultMessage(msg SDKMessage) bool {
+	switch msg.(type) {
+	case *SDKResultSuccess, *SDKResultError:
+		return true
+	}
+	return false
+}
