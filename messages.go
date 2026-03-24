@@ -56,14 +56,14 @@ type SDKPermissionDenial struct {
 
 // --- Assistant Message ---
 
-// SDKAssistantMessage represents an assistant response.
+// SDKAssistantMessage represents an assistant response message.
 type SDKAssistantMessage struct {
-	Type            string                   `json:"type"` // "assistant"
-	Message         json.RawMessage          `json:"message"`
-	ParentToolUseID *string                  `json:"parent_tool_use_id"`
+	Type            string                    `json:"type"` // "assistant"
+	Message         json.RawMessage           `json:"message"`
+	ParentToolUseID *string                   `json:"parent_tool_use_id"`
 	Error           *SDKAssistantMessageError `json:"error,omitempty"`
-	UUID            string                   `json:"uuid"`
-	SessionID       string                   `json:"session_id"`
+	UUID            string                    `json:"uuid"`
+	SessionID       string                    `json:"session_id"`
 }
 
 func (m *SDKAssistantMessage) sdkMessage()        {}
@@ -78,7 +78,7 @@ type SDKUserMessage struct {
 	ParentToolUseID *string         `json:"parent_tool_use_id"`
 	IsSynthetic     *bool           `json:"isSynthetic,omitempty"`
 	ToolUseResult   interface{}     `json:"tool_use_result,omitempty"`
-	Priority        *string         `json:"priority,omitempty"`
+	Priority        *string         `json:"priority,omitempty"` // "now" | "next" | "later"
 	Timestamp       *string         `json:"timestamp,omitempty"`
 	UUID            *string         `json:"uuid,omitempty"`
 	SessionID       string          `json:"session_id"`
@@ -87,7 +87,7 @@ type SDKUserMessage struct {
 func (m *SDKUserMessage) sdkMessage()        {}
 func (m *SDKUserMessage) MessageType() string { return "user" }
 
-// SDKUserMessageReplay represents a replayed user message from session history.
+// SDKUserMessageReplay represents a replayed user message (from session history).
 type SDKUserMessageReplay struct {
 	Type            string          `json:"type"` // "user"
 	Message         json.RawMessage `json:"message"`
@@ -108,22 +108,22 @@ func (m *SDKUserMessageReplay) MessageType() string { return "user" }
 
 // SDKResultSuccess represents a successful query result.
 type SDKResultSuccess struct {
-	Type              string                    `json:"type"`    // "result"
-	Subtype           string                    `json:"subtype"` // "success"
-	DurationMs        int                       `json:"duration_ms"`
-	DurationAPIMs     int                       `json:"duration_api_ms"`
-	IsError           bool                      `json:"is_error"`
-	NumTurns          int                       `json:"num_turns"`
-	Result            string                    `json:"result"`
-	StopReason        *string                   `json:"stop_reason"`
-	TotalCostUSD      float64                   `json:"total_cost_usd"`
-	Usage             NonNullableUsage          `json:"usage"`
-	ModelUsageMap     map[string]ModelUsage     `json:"modelUsage"`
-	PermissionDenials []SDKPermissionDenial     `json:"permission_denials"`
-	StructuredOutput  interface{}               `json:"structured_output,omitempty"`
-	FastModeState     *FastModeState            `json:"fast_mode_state,omitempty"`
-	UUID              string                    `json:"uuid"`
-	SessionID         string                    `json:"session_id"`
+	Type              string                `json:"type"`    // "result"
+	Subtype           string                `json:"subtype"` // "success"
+	DurationMs        int                   `json:"duration_ms"`
+	DurationAPIMs     int                   `json:"duration_api_ms"`
+	IsError           bool                  `json:"is_error"`
+	NumTurns          int                   `json:"num_turns"`
+	Result            string                `json:"result"`
+	StopReason        *string               `json:"stop_reason"`
+	TotalCostUSD      float64               `json:"total_cost_usd"`
+	Usage             NonNullableUsage      `json:"usage"`
+	ModelUsageMap     map[string]ModelUsage `json:"modelUsage"`
+	PermissionDenials []SDKPermissionDenial `json:"permission_denials"`
+	StructuredOutput  interface{}           `json:"structured_output,omitempty"`
+	FastModeState     *FastModeState        `json:"fast_mode_state,omitempty"`
+	UUID              string                `json:"uuid"`
+	SessionID         string                `json:"session_id"`
 }
 
 func (m *SDKResultSuccess) sdkMessage()        {}
@@ -131,21 +131,21 @@ func (m *SDKResultSuccess) MessageType() string { return "result" }
 
 // SDKResultError represents a failed query result.
 type SDKResultError struct {
-	Type              string                    `json:"type"`    // "result"
-	Subtype           string                    `json:"subtype"` // "error_during_execution" | etc.
-	DurationMs        int                       `json:"duration_ms"`
-	DurationAPIMs     int                       `json:"duration_api_ms"`
-	IsError           bool                      `json:"is_error"`
-	NumTurns          int                       `json:"num_turns"`
-	StopReason        *string                   `json:"stop_reason"`
-	TotalCostUSD      float64                   `json:"total_cost_usd"`
-	Usage             NonNullableUsage          `json:"usage"`
-	ModelUsageMap     map[string]ModelUsage     `json:"modelUsage"`
-	PermissionDenials []SDKPermissionDenial     `json:"permission_denials"`
-	Errors            []string                  `json:"errors"`
-	FastModeState     *FastModeState            `json:"fast_mode_state,omitempty"`
-	UUID              string                    `json:"uuid"`
-	SessionID         string                    `json:"session_id"`
+	Type              string                `json:"type"`    // "result"
+	Subtype           string                `json:"subtype"` // "error_during_execution" | "error_max_turns" | "error_max_budget_usd" | "error_max_structured_output_retries"
+	DurationMs        int                   `json:"duration_ms"`
+	DurationAPIMs     int                   `json:"duration_api_ms"`
+	IsError           bool                  `json:"is_error"`
+	NumTurns          int                   `json:"num_turns"`
+	StopReason        *string               `json:"stop_reason"`
+	TotalCostUSD      float64               `json:"total_cost_usd"`
+	Usage             NonNullableUsage      `json:"usage"`
+	ModelUsageMap     map[string]ModelUsage `json:"modelUsage"`
+	PermissionDenials []SDKPermissionDenial `json:"permission_denials"`
+	Errors            []string              `json:"errors"`
+	FastModeState     *FastModeState        `json:"fast_mode_state,omitempty"`
+	UUID              string                `json:"uuid"`
+	SessionID         string                `json:"session_id"`
 }
 
 func (m *SDKResultError) sdkMessage()        {}
@@ -153,19 +153,19 @@ func (m *SDKResultError) MessageType() string { return "result" }
 
 // --- System Messages ---
 
-// McpServerRef is a reference to an MCP server in init messages.
+// McpServerRef is a reference to an MCP server in the system init message.
 type McpServerRef struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
 }
 
-// PluginRef is a reference to a plugin in init messages.
+// PluginRef is a reference to a plugin in the system init message.
 type PluginRef struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 
-// SDKSystemMessage represents the system init message sent at session start.
+// SDKSystemMessage represents the system initialization message.
 type SDKSystemMessage struct {
 	Type              string         `json:"type"`    // "system"
 	Subtype           string         `json:"subtype"` // "init"
@@ -192,11 +192,11 @@ func (m *SDKSystemMessage) MessageType() string { return "system" }
 
 // --- Status Message ---
 
-// SDKStatusMessage represents a status update (e.g., compacting).
+// SDKStatusMessage represents a system status update.
 type SDKStatusMessage struct {
 	Type           string          `json:"type"`    // "system"
 	Subtype        string          `json:"subtype"` // "status"
-	Status         *string         `json:"status"`
+	Status         *string         `json:"status"`  // "compacting" | null
 	PermissionMode *PermissionMode `json:"permissionMode,omitempty"`
 	UUID           string          `json:"uuid"`
 	SessionID      string          `json:"session_id"`
@@ -207,17 +207,17 @@ func (m *SDKStatusMessage) MessageType() string { return "system" }
 
 // --- API Retry ---
 
-// SDKAPIRetryMessage indicates an API call is being retried.
+// SDKAPIRetryMessage represents an API retry notification.
 type SDKAPIRetryMessage struct {
-	Type         string                   `json:"type"`    // "system"
-	Subtype      string                   `json:"subtype"` // "api_retry"
-	Attempt      int                      `json:"attempt"`
-	MaxRetries   int                      `json:"max_retries"`
-	RetryDelayMs int                      `json:"retry_delay_ms"`
-	ErrorStatus  *int                     `json:"error_status"`
+	Type         string                    `json:"type"`    // "system"
+	Subtype      string                    `json:"subtype"` // "api_retry"
+	Attempt      int                       `json:"attempt"`
+	MaxRetries   int                       `json:"max_retries"`
+	RetryDelayMs int                       `json:"retry_delay_ms"`
+	ErrorStatus  *int                      `json:"error_status"`
 	Error        *SDKAssistantMessageError `json:"error"`
-	UUID         string                   `json:"uuid"`
-	SessionID    string                   `json:"session_id"`
+	UUID         string                    `json:"uuid"`
+	SessionID    string                    `json:"session_id"`
 }
 
 func (m *SDKAPIRetryMessage) sdkMessage()        {}
@@ -225,7 +225,21 @@ func (m *SDKAPIRetryMessage) MessageType() string { return "system" }
 
 // --- Compact Boundary ---
 
-// SDKCompactBoundaryMessage marks a compaction boundary in the transcript.
+// CompactMetadata contains metadata about a context compaction event.
+type CompactMetadata struct {
+	Trigger          string            `json:"trigger"` // "manual" | "auto"
+	PreTokens        int               `json:"pre_tokens"`
+	PreservedSegment *PreservedSegment `json:"preserved_segment,omitempty"`
+}
+
+// PreservedSegment identifies the preserved message range during compaction.
+type PreservedSegment struct {
+	HeadUUID   string `json:"head_uuid"`
+	AnchorUUID string `json:"anchor_uuid"`
+	TailUUID   string `json:"tail_uuid"`
+}
+
+// SDKCompactBoundaryMessage represents a context compaction boundary.
 type SDKCompactBoundaryMessage struct {
 	Type            string          `json:"type"`    // "system"
 	Subtype         string          `json:"subtype"` // "compact_boundary"
@@ -237,23 +251,9 @@ type SDKCompactBoundaryMessage struct {
 func (m *SDKCompactBoundaryMessage) sdkMessage()        {}
 func (m *SDKCompactBoundaryMessage) MessageType() string { return "system" }
 
-// CompactMetadata contains metadata about a compaction operation.
-type CompactMetadata struct {
-	Trigger          string            `json:"trigger"`
-	PreTokens        int               `json:"pre_tokens"`
-	PreservedSegment *PreservedSegment `json:"preserved_segment,omitempty"`
-}
-
-// PreservedSegment identifies the segment preserved across compaction.
-type PreservedSegment struct {
-	HeadUUID   string `json:"head_uuid"`
-	AnchorUUID string `json:"anchor_uuid"`
-	TailUUID   string `json:"tail_uuid"`
-}
-
 // --- Local Command Output ---
 
-// SDKLocalCommandOutputMessage contains output from a local shell command.
+// SDKLocalCommandOutputMessage represents output from a local shell command.
 type SDKLocalCommandOutputMessage struct {
 	Type      string `json:"type"`    // "system"
 	Subtype   string `json:"subtype"` // "local_command_output"
@@ -267,7 +267,7 @@ func (m *SDKLocalCommandOutputMessage) MessageType() string { return "system" }
 
 // --- Hook Messages ---
 
-// SDKHookStartedMessage indicates a hook has started execution.
+// SDKHookStartedMessage represents a hook execution start event.
 type SDKHookStartedMessage struct {
 	Type      string `json:"type"`    // "system"
 	Subtype   string `json:"subtype"` // "hook_started"
@@ -281,7 +281,7 @@ type SDKHookStartedMessage struct {
 func (m *SDKHookStartedMessage) sdkMessage()        {}
 func (m *SDKHookStartedMessage) MessageType() string { return "system" }
 
-// SDKHookProgressMessage contains progress output from a running hook.
+// SDKHookProgressMessage represents hook execution progress.
 type SDKHookProgressMessage struct {
 	Type      string `json:"type"`    // "system"
 	Subtype   string `json:"subtype"` // "hook_progress"
@@ -298,7 +298,7 @@ type SDKHookProgressMessage struct {
 func (m *SDKHookProgressMessage) sdkMessage()        {}
 func (m *SDKHookProgressMessage) MessageType() string { return "system" }
 
-// SDKHookResponseMessage contains the final result of a hook execution.
+// SDKHookResponseMessage represents the final hook execution result.
 type SDKHookResponseMessage struct {
 	Type      string `json:"type"`    // "system"
 	Subtype   string `json:"subtype"` // "hook_response"
@@ -319,7 +319,7 @@ func (m *SDKHookResponseMessage) MessageType() string { return "system" }
 
 // --- Stream Event (Partial Assistant Message) ---
 
-// SDKPartialAssistantMessage represents a streaming delta from the assistant.
+// SDKPartialAssistantMessage represents a streaming content delta.
 type SDKPartialAssistantMessage struct {
 	Type            string          `json:"type"` // "stream_event"
 	Event           json.RawMessage `json:"event"`
@@ -333,7 +333,7 @@ func (m *SDKPartialAssistantMessage) MessageType() string { return "stream_event
 
 // --- Tool Progress ---
 
-// SDKToolProgressMessage reports progress of a running tool.
+// SDKToolProgressMessage represents progress on an active tool execution.
 type SDKToolProgressMessage struct {
 	Type               string  `json:"type"` // "tool_progress"
 	ToolUseID          string  `json:"tool_use_id"`
@@ -350,7 +350,7 @@ func (m *SDKToolProgressMessage) MessageType() string { return "tool_progress" }
 
 // --- Tool Use Summary ---
 
-// SDKToolUseSummaryMessage provides a summary of tool use activity.
+// SDKToolUseSummaryMessage represents a summary of completed tool uses.
 type SDKToolUseSummaryMessage struct {
 	Type                string   `json:"type"` // "tool_use_summary"
 	Summary             string   `json:"summary"`
@@ -364,7 +364,7 @@ func (m *SDKToolUseSummaryMessage) MessageType() string { return "tool_use_summa
 
 // --- Auth Status ---
 
-// SDKAuthStatusMessage reports authentication status changes.
+// SDKAuthStatusMessage represents an authentication status update.
 type SDKAuthStatusMessage struct {
 	Type             string   `json:"type"` // "auth_status"
 	IsAuthenticating bool     `json:"isAuthenticating"`
@@ -379,14 +379,14 @@ func (m *SDKAuthStatusMessage) MessageType() string { return "auth_status" }
 
 // --- Task Messages ---
 
-// TaskUsage contains resource usage for a task.
+// TaskUsage contains usage statistics for a subagent task.
 type TaskUsage struct {
 	TotalTokens int `json:"total_tokens"`
 	ToolUses    int `json:"tool_uses"`
 	DurationMs  int `json:"duration_ms"`
 }
 
-// SDKTaskNotificationMessage notifies about task completion/failure.
+// SDKTaskNotificationMessage represents a task completion notification.
 type SDKTaskNotificationMessage struct {
 	Type       string     `json:"type"`    // "system"
 	Subtype    string     `json:"subtype"` // "task_notification"
@@ -403,7 +403,7 @@ type SDKTaskNotificationMessage struct {
 func (m *SDKTaskNotificationMessage) sdkMessage()        {}
 func (m *SDKTaskNotificationMessage) MessageType() string { return "system" }
 
-// SDKTaskStartedMessage notifies that a task has started.
+// SDKTaskStartedMessage represents a task start event.
 type SDKTaskStartedMessage struct {
 	Type        string  `json:"type"`    // "system"
 	Subtype     string  `json:"subtype"` // "task_started"
@@ -419,7 +419,7 @@ type SDKTaskStartedMessage struct {
 func (m *SDKTaskStartedMessage) sdkMessage()        {}
 func (m *SDKTaskStartedMessage) MessageType() string { return "system" }
 
-// SDKTaskProgressMessage reports progress of a running task.
+// SDKTaskProgressMessage represents a task progress update.
 type SDKTaskProgressMessage struct {
 	Type         string    `json:"type"`    // "system"
 	Subtype      string    `json:"subtype"` // "task_progress"
@@ -450,7 +450,7 @@ type PersistedFileFail struct {
 	Error    string `json:"error"`
 }
 
-// SDKFilesPersistedEvent notifies that files have been persisted.
+// SDKFilesPersistedEvent represents a files persisted notification.
 type SDKFilesPersistedEvent struct {
 	Type        string              `json:"type"`    // "system"
 	Subtype     string              `json:"subtype"` // "files_persisted"
@@ -466,7 +466,7 @@ func (m *SDKFilesPersistedEvent) MessageType() string { return "system" }
 
 // --- Rate Limit ---
 
-// SDKRateLimitInfo contains rate limit details.
+// SDKRateLimitInfo contains rate limit status details.
 type SDKRateLimitInfo struct {
 	Status                string   `json:"status"` // "allowed" | "allowed_warning" | "rejected"
 	ResetsAt              *int64   `json:"resetsAt,omitempty"`
@@ -479,7 +479,7 @@ type SDKRateLimitInfo struct {
 	SurpassedThreshold    *float64 `json:"surpassedThreshold,omitempty"`
 }
 
-// SDKRateLimitEvent reports rate limit status.
+// SDKRateLimitEvent represents a rate limit status update.
 type SDKRateLimitEvent struct {
 	Type          string           `json:"type"` // "rate_limit_event"
 	RateLimitInfo SDKRateLimitInfo `json:"rate_limit_info"`
@@ -492,7 +492,7 @@ func (m *SDKRateLimitEvent) MessageType() string { return "rate_limit_event" }
 
 // --- Elicitation Complete ---
 
-// SDKElicitationCompleteMessage notifies that an MCP elicitation has completed.
+// SDKElicitationCompleteMessage represents an elicitation completion event.
 type SDKElicitationCompleteMessage struct {
 	Type          string `json:"type"`    // "system"
 	Subtype       string `json:"subtype"` // "elicitation_complete"
@@ -507,7 +507,7 @@ func (m *SDKElicitationCompleteMessage) MessageType() string { return "system" }
 
 // --- Prompt Suggestion ---
 
-// SDKPromptSuggestionMessage suggests a prompt to the user.
+// SDKPromptSuggestionMessage represents a prompt suggestion from the CLI.
 type SDKPromptSuggestionMessage struct {
 	Type       string `json:"type"` // "prompt_suggestion"
 	Suggestion string `json:"suggestion"`
@@ -518,9 +518,10 @@ type SDKPromptSuggestionMessage struct {
 func (m *SDKPromptSuggestionMessage) sdkMessage()        {}
 func (m *SDKPromptSuggestionMessage) MessageType() string { return "prompt_suggestion" }
 
-// --- Raw Message (fallthrough) ---
+// --- Raw Message (fallthrough for unknown types) ---
 
 // SDKRawMessage holds an unrecognized message type as raw JSON.
+// This prevents errors when the CLI emits new or internal message types.
 type SDKRawMessage struct {
 	RawType    string          `json:"type"`
 	RawSubtype string          `json:"subtype,omitempty"`

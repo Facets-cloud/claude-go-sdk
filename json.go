@@ -12,6 +12,8 @@ type messageEnvelope struct {
 }
 
 // ParseSDKMessage deserializes raw JSON into the appropriate SDKMessage concrete type.
+// Unknown message types are returned as *SDKRawMessage instead of an error,
+// which prevents failures when the CLI emits new or internal message types.
 func ParseSDKMessage(data []byte) (SDKMessage, error) {
 	var env messageEnvelope
 	if err := json.Unmarshal(data, &env); err != nil {
@@ -106,7 +108,7 @@ func ParseSDKMessage(data []byte) (SDKMessage, error) {
 		return &m, nil
 
 	default:
-		return &SDKRawMessage{RawType: env.Type, Raw: json.RawMessage(data)}, nil
+		return &SDKRawMessage{RawType: env.Type, RawSubtype: env.Subtype, Raw: json.RawMessage(data)}, nil
 	}
 }
 
@@ -191,6 +193,7 @@ func parseSystemMessage(subtype string, data []byte) (SDKMessage, error) {
 		}
 		return &m, nil
 	default:
+		// Unknown system subtype — return as raw
 		return &SDKRawMessage{RawType: "system", RawSubtype: subtype, Raw: json.RawMessage(data)}, nil
 	}
 }
