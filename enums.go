@@ -84,9 +84,6 @@ const (
 	FastModeStateOn       FastModeState = "on"
 )
 
-// SDKStatus represents system status states.
-type SDKStatus *string
-
 // SDKAssistantMessageError enumerates assistant message error types.
 type SDKAssistantMessageError string
 
