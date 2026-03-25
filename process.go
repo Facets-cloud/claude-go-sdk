@@ -50,30 +50,44 @@ func defaultSpawn(opts SpawnOptions) SpawnedProcess {
 }
 
 // buildProcessArgs constructs the CLI argument list from Options.
+// Flags are cross-referenced with the TypeScript SDK source (sdk.mjs) for accuracy.
 func buildProcessArgs(opts *Options, prompt string) []string {
 	args := []string{
-		"--print",
 		"--output-format", "stream-json",
 		"--verbose",
 	}
 
 	if opts == nil {
 		if prompt != "" {
-			args = append(args, prompt)
+			args = append(args, "--print", "--", prompt)
 		}
 		return args
 	}
 
-	if opts.Model != nil {
-		args = append(args, "--model", *opts.Model)
+	// Thinking config (must be before other flags per TS SDK ordering)
+	if opts.Thinking != nil {
+		switch opts.Thinking.Type {
+		case "adaptive":
+			args = append(args, "--thinking", "adaptive")
+		case "disabled":
+			args = append(args, "--thinking", "disabled")
+		case "enabled":
+			if opts.Thinking.BudgetTokens != nil {
+				args = append(args, "--max-thinking-tokens", fmt.Sprintf("%d", *opts.Thinking.BudgetTokens))
+			} else {
+				args = append(args, "--thinking", "adaptive")
+			}
+		}
+	} else if opts.MaxThinkingTokens != nil {
+		if *opts.MaxThinkingTokens == 0 {
+			args = append(args, "--thinking", "disabled")
+		} else {
+			args = append(args, "--max-thinking-tokens", fmt.Sprintf("%d", *opts.MaxThinkingTokens))
+		}
 	}
 
-	if opts.PermissionMode != nil {
-		args = append(args, "--permission-mode", string(*opts.PermissionMode))
-	}
-
-	if opts.AllowDangerouslySkipPermissions != nil && *opts.AllowDangerouslySkipPermissions {
-		args = append(args, "--dangerously-skip-permissions")
+	if opts.Effort != nil {
+		args = append(args, "--effort", *opts.Effort)
 	}
 
 	if opts.MaxTurns != nil {
@@ -84,6 +98,47 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		args = append(args, "--max-budget-usd", fmt.Sprintf("%.2f", *opts.MaxBudgetUsd))
 	}
 
+	if opts.Model != nil {
+		args = append(args, "--model", *opts.Model)
+	}
+
+	if opts.Agent != nil {
+		args = append(args, "--agent", *opts.Agent)
+	}
+
+	if len(opts.Betas) > 0 {
+		betaStrs := make([]string, len(opts.Betas))
+		for i, b := range opts.Betas {
+			betaStrs[i] = string(b)
+		}
+		args = append(args, "--betas", strings.Join(betaStrs, ","))
+	}
+
+	// JSON schema for structured output
+	if opts.OutputFormat != nil {
+		ofJSON, err := json.Marshal(opts.OutputFormat.Schema)
+		if err == nil {
+			args = append(args, "--json-schema", string(ofJSON))
+		}
+	}
+
+	if opts.DebugFile != nil {
+		args = append(args, "--debug-file", *opts.DebugFile)
+	} else if opts.Debug != nil && *opts.Debug {
+		args = append(args, "--debug")
+	}
+
+	// Permission prompt tool (TS SDK: --permission-prompt-tool)
+	if opts.CanUseTool != nil {
+		if opts.PermissionPromptToolName != nil {
+			// Can't use both
+		} else {
+			args = append(args, "--permission-prompt-tool", "stdio")
+		}
+	} else if opts.PermissionPromptToolName != nil {
+		args = append(args, "--permission-prompt-tool", *opts.PermissionPromptToolName)
+	}
+
 	if opts.Continue != nil && *opts.Continue {
 		args = append(args, "--continue")
 	}
@@ -92,92 +147,94 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		args = append(args, "--resume", *opts.Resume)
 	}
 
-	if opts.SessionID != nil {
-		args = append(args, "--session-id", *opts.SessionID)
+	// AllowedTools — comma-separated (matches TS SDK: --allowedTools X,Y)
+	if len(opts.AllowedTools) > 0 {
+		args = append(args, "--allowedTools", strings.Join(opts.AllowedTools, ","))
 	}
 
-	// Cwd is handled by setting cmd.Dir on the subprocess, not via CLI flag.
-
-	if opts.Agent != nil {
-		args = append(args, "--agent", *opts.Agent)
+	// DisallowedTools — comma-separated
+	if len(opts.DisallowedTools) > 0 {
+		args = append(args, "--disallowedTools", strings.Join(opts.DisallowedTools, ","))
 	}
 
-	if opts.Debug != nil && *opts.Debug {
-		args = append(args, "--debug")
+	// Tools
+	if opts.Tools != nil {
+		switch t := opts.Tools.(type) {
+		case []string:
+			if len(t) == 0 {
+				args = append(args, "--tools", "")
+			} else {
+				args = append(args, "--tools", strings.Join(t, ","))
+			}
+		case ToolPreset:
+			args = append(args, "--tools", "default")
+		}
 	}
 
-	if opts.DebugFile != nil {
-		args = append(args, "--debug-file", *opts.DebugFile)
+	// MCP servers — pass as JSON string (matches TS SDK)
+	if len(opts.McpServers) > 0 {
+		mcpConfig := map[string]interface{}{
+			"mcpServers": opts.McpServers,
+		}
+		mcpJSON, err := json.Marshal(mcpConfig)
+		if err == nil {
+			args = append(args, "--mcp-config", string(mcpJSON))
+		}
 	}
 
-	if opts.ForkSession != nil && *opts.ForkSession {
-		args = append(args, "--fork-session")
-	}
-
-	if opts.PersistSession != nil && !*opts.PersistSession {
-		args = append(args, "--no-persist-session")
-	}
-
-	if opts.IncludePartialMessages != nil && *opts.IncludePartialMessages {
-		args = append(args, "--include-partial-messages")
-	}
-
-	if opts.PromptSuggestions != nil && *opts.PromptSuggestions {
-		args = append(args, "--prompt-suggestions")
-	}
-
-	if opts.AgentProgressSummaries != nil && *opts.AgentProgressSummaries {
-		args = append(args, "--agent-progress-summaries")
+	// Setting sources — comma-separated
+	if len(opts.SettingSources) > 0 {
+		sourceStrs := make([]string, len(opts.SettingSources))
+		for i, s := range opts.SettingSources {
+			sourceStrs[i] = string(s)
+		}
+		args = append(args, "--setting-sources", strings.Join(sourceStrs, ","))
 	}
 
 	if opts.StrictMcpConfig != nil && *opts.StrictMcpConfig {
 		args = append(args, "--strict-mcp-config")
 	}
 
+	if opts.PermissionMode != nil {
+		args = append(args, "--permission-mode", string(*opts.PermissionMode))
+	}
+
+	if opts.AllowDangerouslySkipPermissions != nil && *opts.AllowDangerouslySkipPermissions {
+		args = append(args, "--allow-dangerously-skip-permissions")
+	}
+
 	if opts.FallbackModel != nil {
 		args = append(args, "--fallback-model", *opts.FallbackModel)
 	}
 
-	if opts.EnableFileCheckpointing != nil && *opts.EnableFileCheckpointing {
-		args = append(args, "--enable-file-checkpointing")
+	if opts.IncludePartialMessages != nil && *opts.IncludePartialMessages {
+		args = append(args, "--include-partial-messages")
 	}
 
-	if opts.MaxThinkingTokens != nil {
-		args = append(args, "--max-thinking-tokens", fmt.Sprintf("%d", *opts.MaxThinkingTokens))
+	for _, dir := range opts.AdditionalDirectories {
+		args = append(args, "--add-dir", dir)
 	}
 
-	if opts.Effort != nil {
-		args = append(args, "--effort", *opts.Effort)
+	for _, plugin := range opts.Plugins {
+		if plugin.Type == "local" {
+			args = append(args, "--plugin-dir", plugin.Path)
+		}
+	}
+
+	if opts.ForkSession != nil && *opts.ForkSession {
+		args = append(args, "--fork-session")
 	}
 
 	if opts.ResumeSessionAt != nil {
 		args = append(args, "--resume-session-at", *opts.ResumeSessionAt)
 	}
 
-	if opts.PermissionPromptToolName != nil {
-		args = append(args, "--permission-prompt-tool-name", *opts.PermissionPromptToolName)
+	if opts.SessionID != nil {
+		args = append(args, "--session-id", *opts.SessionID)
 	}
 
-	for _, dir := range opts.AdditionalDirectories {
-		args = append(args, "--additional-directory", dir)
-	}
-
-	if len(opts.AllowedTools) > 0 {
-		args = append(args, "--allowed-tools")
-		args = append(args, opts.AllowedTools...)
-	}
-
-	if len(opts.DisallowedTools) > 0 {
-		args = append(args, "--disallowed-tools")
-		args = append(args, opts.DisallowedTools...)
-	}
-
-	for _, beta := range opts.Betas {
-		args = append(args, "--beta", string(beta))
-	}
-
-	for _, source := range opts.SettingSources {
-		args = append(args, "--setting-source", string(source))
+	if opts.PersistSession != nil && !*opts.PersistSession {
+		args = append(args, "--no-session-persistence")
 	}
 
 	// System prompt
@@ -192,75 +249,6 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Tools
-	if opts.Tools != nil {
-		switch t := opts.Tools.(type) {
-		case []string:
-			args = append(args, "--tools", strings.Join(t, ","))
-		case ToolPreset:
-			// preset is the default, no flag needed
-		}
-	}
-
-	// Thinking config — no dedicated CLI flag exists.
-	// Thinking is controlled via settings (alwaysThinkingEnabled) or the API.
-	// For --print mode, we skip it — the default behavior is adaptive thinking
-	// for supported models.
-
-	// Output format
-	if opts.OutputFormat != nil {
-		ofJSON, err := json.Marshal(opts.OutputFormat)
-		if err == nil {
-			args = append(args, "--output-format-json", string(ofJSON))
-		}
-	}
-
-	// Settings
-	if opts.Settings != nil {
-		switch s := opts.Settings.(type) {
-		case string:
-			args = append(args, "--settings", s)
-		default:
-			settingsJSON, err := json.Marshal(s)
-			if err == nil {
-				args = append(args, "--settings", string(settingsJSON))
-			}
-		}
-	}
-
-	// MCP servers
-	if len(opts.McpServers) > 0 {
-		// --mcp-config accepts JSON files or strings.
-		// Write to a temp file since the CLI may parse it as a file path.
-		mcpConfig := map[string]interface{}{
-			"mcpServers": opts.McpServers,
-		}
-		mcpJSON, err := json.Marshal(mcpConfig)
-		if err == nil {
-			tmpFile, err := os.CreateTemp("", "claude-mcp-*.json")
-			if err == nil {
-				tmpFile.Write(mcpJSON)
-				tmpFile.Close()
-				args = append(args, "--mcp-config", tmpFile.Name())
-				// Note: temp file is cleaned up by OS on process exit
-			}
-		}
-	}
-
-	// Sandbox
-	if opts.Sandbox != nil {
-		sbJSON, err := json.Marshal(opts.Sandbox)
-		if err == nil {
-			args = append(args, "--sandbox", string(sbJSON))
-		}
-	}
-
-	// Plugins
-	for _, plugin := range opts.Plugins {
-		args = append(args, "--plugin", plugin.Path)
-	}
-
-	// Agents
 	if len(opts.Agents) > 0 {
 		agentsJSON, err := json.Marshal(opts.Agents)
 		if err == nil {
@@ -268,15 +256,43 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Tool config
-	if opts.ToolConfig != nil {
-		tcJSON, err := json.Marshal(opts.ToolConfig)
-		if err == nil {
-			args = append(args, "--tool-config", string(tcJSON))
+	// Settings — passed via extra args mechanism in TS SDK.
+	// Sandbox is embedded inside settings.
+	if opts.Settings != nil || opts.Sandbox != nil {
+		var settingsObj map[string]interface{}
+		switch s := opts.Settings.(type) {
+		case string:
+			args = append(args, "--settings", s)
+		case nil:
+			settingsObj = make(map[string]interface{})
+		default:
+			settingsJSON, err := json.Marshal(s)
+			if err == nil {
+				json.Unmarshal(settingsJSON, &settingsObj)
+			}
+		}
+		if opts.Sandbox != nil && settingsObj != nil {
+			settingsObj["sandbox"] = opts.Sandbox
+			combined, err := json.Marshal(settingsObj)
+			if err == nil {
+				args = append(args, "--settings", string(combined))
+			}
+		} else if settingsObj != nil && len(settingsObj) > 0 {
+			combined, err := json.Marshal(settingsObj)
+			if err == nil {
+				args = append(args, "--settings", string(combined))
+			}
 		}
 	}
 
-	// Extra args
+	// Options handled via environment or init config (not CLI flags):
+	// - Cwd: handled via cmd.Dir
+	// - EnableFileCheckpointing: set via env CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING
+	// - ToolConfig: set via env CLAUDE_CODE_QUESTION_PREVIEW_FORMAT
+	// - PromptSuggestions: passed in initialize control request
+	// - AgentProgressSummaries: passed in initialize control request
+
+	// Extra args — escape hatch for any flags not covered above
 	for k, v := range opts.ExtraArgs {
 		if v == nil {
 			args = append(args, "--"+k)
@@ -285,11 +301,10 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Prompt as positional argument (must be last).
-	// Use "--" to separate options from the positional prompt,
-	// preventing variadic options like --mcp-config from consuming it.
+	// Prompt — in print mode, use --print with positional arg.
+	// Use "--" separator to prevent variadic flags from consuming the prompt.
 	if prompt != "" {
-		args = append(args, "--", prompt)
+		args = append(args, "--print", "--", prompt)
 	}
 
 	return args

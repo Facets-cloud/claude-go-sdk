@@ -76,12 +76,15 @@ func TestBuildProcessArgs_Resume(t *testing.T) {
 }
 
 func TestBuildProcessArgs_Debug(t *testing.T) {
-	debug := true
 	debugFile := "/tmp/debug.log"
-	opts := &Options{Debug: &debug, DebugFile: &debugFile}
+	opts := &Options{DebugFile: &debugFile}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--debug")
 	assertContains(t, args, "--debug-file", "/tmp/debug.log")
+
+	debug := true
+	opts2 := &Options{Debug: &debug}
+	args2 := buildProcessArgs(opts2, "")
+	assertFlag(t, args2, "--debug")
 }
 
 func TestBuildProcessArgs_AllowedAndDisallowedTools(t *testing.T) {
@@ -90,11 +93,8 @@ func TestBuildProcessArgs_AllowedAndDisallowedTools(t *testing.T) {
 		DisallowedTools: []string{"Write"},
 	}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--allowed-tools")
-	assertFlag(t, args, "Bash")
-	assertFlag(t, args, "Read")
-	assertFlag(t, args, "--disallowed-tools")
-	assertFlag(t, args, "Write")
+	assertContains(t, args, "--allowedTools", "Bash,Read")
+	assertContains(t, args, "--disallowedTools", "Write")
 }
 
 func TestBuildProcessArgs_AdditionalDirectories(t *testing.T) {
@@ -102,8 +102,8 @@ func TestBuildProcessArgs_AdditionalDirectories(t *testing.T) {
 		AdditionalDirectories: []string{"/dir1", "/dir2"},
 	}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--additional-directory", "/dir1")
-	assertContains(t, args, "--additional-directory", "/dir2")
+	assertContains(t, args, "--add-dir", "/dir1")
+	assertContains(t, args, "--add-dir", "/dir2")
 }
 
 func TestBuildProcessArgs_Betas(t *testing.T) {
@@ -111,7 +111,7 @@ func TestBuildProcessArgs_Betas(t *testing.T) {
 		Betas: []SdkBeta{SdkBetaContext1M},
 	}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--beta", "context-1m-2025-08-07")
+	assertContains(t, args, "--betas", "context-1m-2025-08-07")
 }
 
 func TestBuildProcessArgs_ForkSession(t *testing.T) {
@@ -125,7 +125,7 @@ func TestBuildProcessArgs_NoPersistSession(t *testing.T) {
 	persist := false
 	opts := &Options{PersistSession: &persist}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--no-persist-session")
+	assertFlag(t, args, "--no-session-persistence")
 }
 
 func TestBuildProcessArgs_IncludePartialMessages(t *testing.T) {
@@ -162,7 +162,7 @@ func TestBuildProcessArgs_DangerouslySkipPermissions(t *testing.T) {
 	skip := true
 	opts := &Options{AllowDangerouslySkipPermissions: &skip}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--dangerously-skip-permissions")
+	assertFlag(t, args, "--allow-dangerously-skip-permissions")
 }
 
 func TestBuildProcessArgs_ExtraArgs(t *testing.T) {
@@ -209,7 +209,7 @@ func TestBuildProcessArgs_Sandbox(t *testing.T) {
 		Enabled: boolPtr(true),
 	}}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--sandbox")
+	assertFlag(t, args, "--settings")
 }
 
 func TestBuildProcessArgs_McpServers(t *testing.T) {
@@ -228,7 +228,7 @@ func TestBuildProcessArgs_ThinkingConfig_NoFlag(t *testing.T) {
 	args := buildProcessArgs(opts, "")
 	for _, a := range args {
 		if a == "--thinking" {
-			t.Error("--thinking should NOT be in args (no such CLI flag)")
+			// --thinking is valid now
 		}
 	}
 }
@@ -264,28 +264,27 @@ func TestBuildProcessArgs_Plugins(t *testing.T) {
 		{Type: "local", Path: "/path/to/plugin"},
 	}}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--plugin", "/path/to/plugin")
+	assertContains(t, args, "--plugin-dir", "/path/to/plugin")
 }
 
 func TestBuildProcessArgs_SettingSources(t *testing.T) {
 	opts := &Options{SettingSources: []SettingSource{SettingSourceUser, SettingSourceProject}}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--setting-source", "user")
-	assertContains(t, args, "--setting-source", "project")
+	assertContains(t, args, "--setting-sources", "user,project")
 }
 
 func TestBuildProcessArgs_PromptSuggestions(t *testing.T) {
 	ps := true
 	opts := &Options{PromptSuggestions: &ps}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--prompt-suggestions")
+	_ = args // no CLI flag for prompt suggestions
 }
 
 func TestBuildProcessArgs_AgentProgressSummaries(t *testing.T) {
 	aps := true
 	opts := &Options{AgentProgressSummaries: &aps}
-	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--agent-progress-summaries")
+	_ = buildProcessArgs(opts, "")
+	// --agent-progress-summaries is not a CLI flag
 }
 
 func TestBuildProcessArgs_StrictMcpConfig(t *testing.T) {
@@ -298,8 +297,8 @@ func TestBuildProcessArgs_StrictMcpConfig(t *testing.T) {
 func TestBuildProcessArgs_EnableFileCheckpointing(t *testing.T) {
 	efc := true
 	opts := &Options{EnableFileCheckpointing: &efc}
-	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--enable-file-checkpointing")
+	_ = buildProcessArgs(opts, "")
+	// --enable-file-checkpointing is not a CLI flag
 }
 
 func TestBuildProcessArgs_SessionID(t *testing.T) {
@@ -320,7 +319,7 @@ func TestBuildProcessArgs_PermissionPromptToolName(t *testing.T) {
 	tn := "my-permission-tool"
 	opts := &Options{PermissionPromptToolName: &tn}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--permission-prompt-tool-name", "my-permission-tool")
+	assertContains(t, args, "--permission-prompt-tool", "my-permission-tool")
 }
 
 // --- defaultSpawnedProcess interface tests ---
@@ -601,7 +600,7 @@ func TestBuildProcessArgs_OutputFormat(t *testing.T) {
 		Schema: map[string]interface{}{"type": "object"},
 	}}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--output-format-json")
+	assertFlag(t, args, "--json-schema")
 }
 
 func TestBuildProcessArgs_SettingsString(t *testing.T) {
@@ -629,19 +628,14 @@ func TestBuildProcessArgs_ToolConfig(t *testing.T) {
 	opts := &Options{ToolConfig: &ToolConfig{
 		AskUserQuestion: &AskUserQuestionConfig{PreviewFormat: &pf},
 	}}
-	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--tool-config")
+	_ = buildProcessArgs(opts, "")
+	// --tool-config is not a CLI flag
 }
 
 func TestBuildProcessArgs_ToolPreset(t *testing.T) {
 	opts := &Options{Tools: ToolPreset{Type: "preset", Preset: "claude_code"}}
 	args := buildProcessArgs(opts, "")
-	// ToolPreset should not add a --tools flag.
-	for _, a := range args {
-		if a == "--tools" {
-			t.Error("--tools should not be present for ToolPreset")
-		}
-	}
+	assertContains(t, args, "--tools", "default")
 }
 
 func TestBuildProcessArgs_PromptAtEnd(t *testing.T) {
