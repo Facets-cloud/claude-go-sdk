@@ -75,19 +75,6 @@ func TestBuildProcessArgs_Resume(t *testing.T) {
 	assertContains(t, args, "--resume", "session-123")
 }
 
-func TestBuildProcessArgs_Cwd(t *testing.T) {
-	// Cwd is handled via cmd.Dir, not a CLI flag.
-	// Verify it's NOT in the args.
-	cwd := "/tmp/work"
-	opts := &Options{Cwd: &cwd}
-	args := buildProcessArgs(opts, "")
-	for _, a := range args {
-		if a == "--cwd" {
-			t.Error("--cwd should not be in args (handled via cmd.Dir)")
-		}
-	}
-}
-
 func TestBuildProcessArgs_Debug(t *testing.T) {
 	debug := true
 	debugFile := "/tmp/debug.log"
@@ -233,11 +220,43 @@ func TestBuildProcessArgs_McpServers(t *testing.T) {
 	assertFlag(t, args, "--mcp-config")
 }
 
-func TestBuildProcessArgs_ThinkingConfig(t *testing.T) {
+func TestBuildProcessArgs_ThinkingConfig_NoFlag(t *testing.T) {
+	// Regression: --thinking flag does not exist in the CLI.
+	// Thinking config is handled via settings, not a CLI flag.
 	tc := ThinkingAdaptive()
 	opts := &Options{Thinking: &tc}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--thinking")
+	for _, a := range args {
+		if a == "--thinking" {
+			t.Error("--thinking should NOT be in args (no such CLI flag)")
+		}
+	}
+}
+
+func TestBuildProcessArgs_ThinkingConfig_NeverSendsJSON(t *testing.T) {
+	// Regression for Bug 1: previously sent --thinking {"type":"adaptive"}
+	// which the CLI rejected as an unknown option.
+	tc := ThinkingAdaptive()
+	opts := &Options{Thinking: &tc}
+	args := buildProcessArgs(opts, "")
+	for _, a := range args {
+		if strings.Contains(a, `{"type"`) {
+			t.Errorf("args should not contain JSON thinking config, got: %q", a)
+		}
+	}
+}
+
+func TestBuildProcessArgs_Cwd_NeverInArgs(t *testing.T) {
+	// Regression for Bug 2: --cwd flag does not exist in the CLI.
+	// Working directory is handled via cmd.Dir on the subprocess.
+	cwd := "/tmp/work"
+	opts := &Options{Cwd: &cwd}
+	args := buildProcessArgs(opts, "")
+	for _, a := range args {
+		if a == "--cwd" {
+			t.Error("--cwd should NOT be in args (handled via cmd.Dir)")
+		}
+	}
 }
 
 func TestBuildProcessArgs_Plugins(t *testing.T) {

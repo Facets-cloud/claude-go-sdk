@@ -202,13 +202,10 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Thinking config
-	if opts.Thinking != nil {
-		thinkJSON, err := json.Marshal(opts.Thinking)
-		if err == nil {
-			args = append(args, "--thinking", string(thinkJSON))
-		}
-	}
+	// Thinking config — no dedicated CLI flag exists.
+	// Thinking is controlled via settings (alwaysThinkingEnabled) or the API.
+	// For --print mode, we skip it — the default behavior is adaptive thinking
+	// for supported models.
 
 	// Output format
 	if opts.OutputFormat != nil {
