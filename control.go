@@ -53,10 +53,9 @@ type SDKControlInterruptRequest struct {
 
 // SDKControlPermissionRequest requests permission to use a tool.
 type SDKControlPermissionRequest struct {
-	Subtype               string                 `json:"subtype"`                          // "can_use_tool"
+	Subtype               string                 `json:"subtype"` // "can_use_tool"
 	ToolName              string                 `json:"tool_name"`
 	Input                 map[string]interface{} `json:"input"`
-	ToolInput             map[string]interface{} `json:"tool_input,omitempty"`
 	PermissionSuggestions json.RawMessage        `json:"permission_suggestions,omitempty"` // []PermissionUpdate
 	BlockedPath           *string                `json:"blocked_path,omitempty"`
 	DecisionReason        *string                `json:"decision_reason,omitempty"`
@@ -102,15 +101,17 @@ type SDKControlSetPermissionModeRequest struct {
 }
 
 // SDKControlSetModelRequest sets the model.
+// Model is *string: nil reverts to the default model.
 type SDKControlSetModelRequest struct {
-	Subtype string `json:"subtype"` // "set_model"
-	Model   string `json:"model,omitempty"`
+	Subtype string  `json:"subtype"` // "set_model"
+	Model   *string `json:"model,omitempty"`
 }
 
 // SDKControlSetMaxThinkingTokensRequest sets thinking token budget.
+// MaxThinkingTokens is *int: nil clears the limit (reverts to default).
 type SDKControlSetMaxThinkingTokensRequest struct {
-	Subtype           string `json:"subtype"`             // "set_max_thinking_tokens"
-	MaxThinkingTokens int    `json:"max_thinking_tokens"`
+	Subtype           string `json:"subtype"` // "set_max_thinking_tokens"
+	MaxThinkingTokens *int   `json:"max_thinking_tokens"`
 }
 
 // SDKControlMcpStatusRequest requests MCP server statuses.
@@ -146,10 +147,9 @@ type SDKControlMcpToggleRequest struct {
 
 // SDKControlRewindFilesRequest rewinds file changes since a specific user message.
 type SDKControlRewindFilesRequest struct {
-	Subtype       string   `json:"subtype"` // "rewind_files"
-	UserMessageID string   `json:"user_message_id"`
-	DryRun        *bool    `json:"dry_run,omitempty"`
-	FilePaths     []string `json:"filePaths,omitempty"`
+	Subtype       string `json:"subtype"` // "rewind_files"
+	UserMessageID string `json:"user_message_id"`
+	DryRun        *bool  `json:"dry_run,omitempty"`
 }
 
 // SDKControlStopTaskRequest stops a running task.
@@ -201,9 +201,10 @@ type SDKHookCallbackMatcher struct {
 
 // SDKHookCallbackRequest is a control request for a hook callback.
 type SDKHookCallbackRequest struct {
-	Subtype   string          `json:"subtype"` // "hook_callback"
-	HookEvent string          `json:"hook_event"`
-	Input     json.RawMessage `json:"input"`
+	Subtype    string          `json:"subtype"` // "hook_callback"
+	CallbackID string          `json:"callback_id"`
+	Input      json.RawMessage `json:"input"`
+	ToolUseID  *string         `json:"tool_use_id,omitempty"`
 }
 
 // --- Missing Control Request Types (Task 29 addendum) ---

@@ -199,9 +199,14 @@ func RenameSession(sessionID string, title string, opts *SessionMutationOptions)
 	return err
 }
 
-// TagSession adds a tag to a session.
-func TagSession(sessionID string, tag string, opts *SessionMutationOptions) error {
-	args := []string{"--output-format", "json", "--tag-session", sessionID, "--tag", tag}
+// TagSession adds or clears a tag on a session. Pass nil to clear the tag.
+func TagSession(sessionID string, tag *string, opts *SessionMutationOptions) error {
+	args := []string{"--output-format", "json", "--tag-session", sessionID}
+	if tag != nil {
+		args = append(args, "--tag", *tag)
+	} else {
+		args = append(args, "--tag", "")
+	}
 	if opts != nil && opts.Dir != nil {
 		args = append(args, "--cwd", *opts.Dir)
 	}

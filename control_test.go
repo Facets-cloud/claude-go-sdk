@@ -175,9 +175,9 @@ func TestControlRequestSubtypes_Marshal(t *testing.T) {
 		subtype string
 	}{
 		{"interrupt", SDKControlInterruptRequest{Subtype: "interrupt"}, "interrupt"},
-		{"set_model", SDKControlSetModelRequest{Subtype: "set_model", Model: "claude-sonnet-4-6"}, "set_model"},
+		{"set_model", SDKControlSetModelRequest{Subtype: "set_model", Model: String("claude-sonnet-4-6")}, "set_model"},
 		{"set_permission_mode", SDKControlSetPermissionModeRequest{Subtype: "set_permission_mode", Mode: PermissionModeDefault}, "set_permission_mode"},
-		{"set_max_thinking_tokens", SDKControlSetMaxThinkingTokensRequest{Subtype: "set_max_thinking_tokens", MaxThinkingTokens: 1000}, "set_max_thinking_tokens"},
+		{"set_max_thinking_tokens", SDKControlSetMaxThinkingTokensRequest{Subtype: "set_max_thinking_tokens", MaxThinkingTokens: Int(1000)}, "set_max_thinking_tokens"},
 		{"mcp_status", SDKControlMcpStatusRequest{Subtype: "mcp_status"}, "mcp_status"},
 		{"mcp_reconnect", SDKControlMcpReconnectRequest{Subtype: "mcp_reconnect", ServerName: "s1"}, "mcp_reconnect"},
 		{"mcp_toggle", SDKControlMcpToggleRequest{Subtype: "mcp_toggle", ServerName: "s1", Enabled: true}, "mcp_toggle"},
@@ -266,8 +266,9 @@ func TestSDKControlMcpMessageRequest_JSON(t *testing.T) {
 func TestSDKHookCallbackRequest_JSON(t *testing.T) {
 	raw := `{
 		"subtype": "hook_callback",
-		"hook_event": "PreToolUse",
-		"input": {"tool_name": "Bash"}
+		"callback_id": "cb-123",
+		"input": {"tool_name": "Bash"},
+		"tool_use_id": "tu-456"
 	}`
 	var req SDKHookCallbackRequest
 	if err := json.Unmarshal([]byte(raw), &req); err != nil {
@@ -276,8 +277,11 @@ func TestSDKHookCallbackRequest_JSON(t *testing.T) {
 	if req.Subtype != "hook_callback" {
 		t.Errorf("got subtype %q", req.Subtype)
 	}
-	if req.HookEvent != "PreToolUse" {
-		t.Errorf("got hook_event %q", req.HookEvent)
+	if req.CallbackID != "cb-123" {
+		t.Errorf("got callback_id %q", req.CallbackID)
+	}
+	if req.ToolUseID == nil || *req.ToolUseID != "tu-456" {
+		t.Errorf("got tool_use_id %v", req.ToolUseID)
 	}
 }
 
@@ -456,7 +460,6 @@ func TestControlRequestTypes_RoundTrip(t *testing.T) {
 			Subtype:   "can_use_tool",
 			ToolName:  "Bash",
 			Input:     map[string]interface{}{"command": "ls"},
-			ToolInput: map[string]interface{}{"command": "ls"},
 			ToolUseID: "tu-1",
 			AgentID:   strPtr("agent-1"),
 		}},
@@ -470,9 +473,9 @@ func TestControlRequestTypes_RoundTrip(t *testing.T) {
 			AppendSystemPrompt: strPtr("append"),
 			PromptSuggestions:  boolPtr(true),
 		}},
-		{"set_model", SDKControlSetModelRequest{Subtype: "set_model", Model: "claude-sonnet-4-6"}},
+		{"set_model", SDKControlSetModelRequest{Subtype: "set_model", Model: String("claude-sonnet-4-6")}},
 		{"set_permission_mode", SDKControlSetPermissionModeRequest{Subtype: "set_permission_mode", Mode: PermissionModeDefault}},
-		{"set_max_thinking_tokens", SDKControlSetMaxThinkingTokensRequest{Subtype: "set_max_thinking_tokens", MaxThinkingTokens: 1000}},
+		{"set_max_thinking_tokens", SDKControlSetMaxThinkingTokensRequest{Subtype: "set_max_thinking_tokens", MaxThinkingTokens: Int(1000)}},
 		{"mcp_status", SDKControlMcpStatusRequest{Subtype: "mcp_status"}},
 		{"mcp_message", SDKControlMcpMessageRequest{
 			Subtype:    "mcp_message",
@@ -489,7 +492,6 @@ func TestControlRequestTypes_RoundTrip(t *testing.T) {
 			Subtype:       "rewind_files",
 			UserMessageID: "msg-1",
 			DryRun:        boolPtr(true),
-			FilePaths:     []string{"a.go", "b.go"},
 		}},
 		{"stop_task", SDKControlStopTaskRequest{Subtype: "stop_task", TaskID: "t-1"}},
 		{"apply_flag_settings", SDKControlApplyFlagSettingsRequest{
@@ -523,9 +525,9 @@ func TestControlRequestTypes_RoundTrip(t *testing.T) {
 		{"generate_session_title", SDKControlGenerateSessionTitleRequest{Subtype: "generate_session_title"}},
 		{"side_question", SDKControlSideQuestionRequest{Subtype: "side_question", Question: "what?"}},
 		{"hook_callback", SDKHookCallbackRequest{
-			Subtype:   "hook_callback",
-			HookEvent: "PreToolUse",
-			Input:     json.RawMessage(`{"tool_name":"Bash"}`),
+			Subtype:    "hook_callback",
+			CallbackID: "cb-1",
+			Input:      json.RawMessage(`{"tool_name":"Bash"}`),
 		}},
 	}
 
@@ -716,7 +718,7 @@ func TestSDKControlInitializeRequest_MinimalFields(t *testing.T) {
 	}
 }
 
-func TestSDKControlRewindFilesRequest_EmptyFilePaths(t *testing.T) {
+func TestSDKControlRewindFilesRequest_NilDryRun(t *testing.T) {
 	req := SDKControlRewindFilesRequest{
 		Subtype:       "rewind_files",
 		UserMessageID: "msg-1",
@@ -729,8 +731,8 @@ func TestSDKControlRewindFilesRequest_EmptyFilePaths(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.FilePaths != nil {
-		t.Error("expected nil FilePaths for empty request")
+	if got.DryRun != nil {
+		t.Error("expected nil DryRun for empty request")
 	}
 }
 

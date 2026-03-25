@@ -75,6 +75,7 @@ type Settings struct {
 	DisableAutoMode                *string                                `json:"disableAutoMode,omitempty"`
 	SSHConfigs                     []SettingsSSHConfig                    `json:"sshConfigs,omitempty"`
 	ClaudeMdExcludes               []string                               `json:"claudeMdExcludes,omitempty"`
+	PluginTrustMessage             *string                                `json:"pluginTrustMessage,omitempty"`
 }
 
 // SettingsPermissions configures tool usage permissions.

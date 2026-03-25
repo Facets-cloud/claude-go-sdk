@@ -86,8 +86,8 @@ func (q *Query) SetPermissionMode(ctx context.Context, mode PermissionMode) erro
 	})
 }
 
-// SetModel changes the model mid-session.
-func (q *Query) SetModel(ctx context.Context, model string) error {
+// SetModel changes the model mid-session. Pass nil to revert to default.
+func (q *Query) SetModel(ctx context.Context, model *string) error {
 	return q.sendControlRequest(ctx, SDKControlSetModelRequest{
 		Subtype: "set_model",
 		Model:   model,
@@ -95,7 +95,8 @@ func (q *Query) SetModel(ctx context.Context, model string) error {
 }
 
 // SetMaxThinkingTokens sets the max thinking token budget.
-func (q *Query) SetMaxThinkingTokens(ctx context.Context, tokens int) error {
+// Pass nil to clear the limit and revert to the model default.
+func (q *Query) SetMaxThinkingTokens(ctx context.Context, tokens *int) error {
 	return q.sendControlRequest(ctx, SDKControlSetMaxThinkingTokensRequest{
 		Subtype:           "set_max_thinking_tokens",
 		MaxThinkingTokens: tokens,

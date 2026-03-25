@@ -7,8 +7,8 @@ type SDKSession interface {
 	// SessionID returns the session UUID.
 	SessionID() string
 
-	// Send sends a message to the agent.
-	Send(message string) error
+	// Send sends a message to the agent. Accepts a string or SDKUserMessage.
+	Send(message interface{}) error
 
 	// Stream returns a channel that streams SDKMessage values from the agent.
 	Stream() <-chan SDKMessage
@@ -84,11 +84,20 @@ func (s *sdkSession) SessionID() string {
 	return s.sessionID
 }
 
-func (s *sdkSession) Send(message string) error {
-	s.input <- SDKUserMessage{
-		Type:      "user",
-		Message:   mustMarshal(map[string]interface{}{"role": "user", "content": message}),
-		SessionID: s.sessionID,
+func (s *sdkSession) Send(message interface{}) error {
+	switch m := message.(type) {
+	case string:
+		s.input <- SDKUserMessage{
+			Type:      "user",
+			Message:   mustMarshal(map[string]interface{}{"role": "user", "content": m}),
+			SessionID: s.sessionID,
+		}
+	case SDKUserMessage:
+		s.input <- m
+	case *SDKUserMessage:
+		s.input <- *m
+	default:
+		return fmt.Errorf("Send: unsupported message type %T, expected string or SDKUserMessage", message)
 	}
 	return nil
 }

@@ -323,7 +323,7 @@ func TestQuery_SetModel_SendsControlRequest(t *testing.T) {
 	doInitHandshake(t, fp)
 
 	go func() {
-		_ = q.SetModel(context.Background(), "claude-opus-4-6")
+		_ = q.SetModel(context.Background(), String("claude-opus-4-6"))
 	}()
 
 	line := readStdinLine(t, fp)
@@ -363,7 +363,7 @@ func TestQuery_SetMaxThinkingTokens_SendsControlRequest(t *testing.T) {
 	doInitHandshake(t, fp)
 
 	go func() {
-		_ = q.SetMaxThinkingTokens(context.Background(), 8192)
+		_ = q.SetMaxThinkingTokens(context.Background(), Int(8192))
 	}()
 
 	line := readStdinLine(t, fp)
