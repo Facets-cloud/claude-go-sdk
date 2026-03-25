@@ -75,12 +75,14 @@ func TestLive_InitializationResult(t *testing.T) {
 	}
 
 	t.Logf("Commands: %d", len(initResp.Commands))
-	t.Logf("Models: %d", len(initResp.Models))
 	t.Logf("Agents: %d", len(initResp.Agents))
 	t.Logf("OutputStyle: %s", initResp.OutputStyle)
 
-	if len(initResp.Models) == 0 {
-		t.Error("expected at least one model")
+	if len(initResp.Commands) == 0 {
+		t.Error("expected at least one command")
+	}
+	if initResp.OutputStyle == "" {
+		t.Error("expected non-empty output style")
 	}
 
 	// Drain messages
@@ -88,7 +90,7 @@ func TestLive_InitializationResult(t *testing.T) {
 	}
 }
 
-func TestLive_SupportedModels(t *testing.T) {
+func TestLive_SupportedCommands(t *testing.T) {
 	q := NewQuery(QueryParams{
 		Prompt: "Say hi",
 		Options: &Options{
@@ -102,18 +104,18 @@ func TestLive_SupportedModels(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	models, err := q.SupportedModels(ctx)
+	commands, err := q.SupportedCommands(ctx)
 	if err != nil {
-		t.Fatalf("SupportedModels: %v", err)
+		t.Fatalf("SupportedCommands: %v", err)
 	}
 
-	t.Logf("Got %d models:", len(models))
-	for _, m := range models {
-		t.Logf("  %s (%s) - effort=%v, fastMode=%v", m.Value, m.DisplayName, m.SupportsEffort, m.SupportsFastMode)
+	t.Logf("Got %d commands:", len(commands))
+	for _, c := range commands[:min(5, len(commands))] {
+		t.Logf("  /%s", c.Name)
 	}
 
-	if len(models) == 0 {
-		t.Error("expected at least one model")
+	if len(commands) == 0 {
+		t.Error("expected at least one command")
 	}
 
 	// Drain
@@ -169,11 +171,9 @@ func TestLive_AccountInfo(t *testing.T) {
 		t.Fatalf("AccountInfo: %v", err)
 	}
 
-	if account != nil {
-		t.Logf("Account: email=%v, org=%v, provider=%v", account.Email, account.Organization, account.ApiProvider)
-	} else {
-		t.Log("Account info is nil (may be expected for some auth types)")
-	}
+	// In --print mode, account info is not available from system:init
+	// It's only available via the initialize control request (streaming mode)
+	t.Logf("Account: %v (nil expected in print mode)", account)
 
 	// Drain
 	for range q.Messages() {

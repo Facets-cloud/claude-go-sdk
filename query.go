@@ -342,7 +342,21 @@ func (q *Query) run(prompt string) {
 		// Capture system:init as the initialization result
 		if sysMsg, ok := msg.(*SDKSystemMessage); ok && sysMsg.Subtype == "init" {
 			q.initOnce.Do(func() {
+				// Build commands from slash_commands
+				var commands []SlashCommand
+				for _, sc := range sysMsg.SlashCommands {
+					commands = append(commands, SlashCommand{Name: sc})
+				}
+				// Build agents from agent names
+				var agents []AgentInfo
+				if sysMsg.Agents != nil {
+					for _, a := range sysMsg.Agents {
+						agents = append(agents, AgentInfo{Name: a})
+					}
+				}
 				q.initResp = &SDKControlInitializeResponse{
+					Commands:    commands,
+					Agents:      agents,
 					OutputStyle: sysMsg.OutputStyle,
 				}
 				close(q.initCh)

@@ -1,6 +1,9 @@
 package claudeagent
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // SDKSession is the interface for multi-turn V2 sessions (unstable/alpha API).
 type SDKSession interface {
@@ -19,40 +22,25 @@ type SDKSession interface {
 
 // sdkSession is the concrete V2 session implementation backed by a Query.
 type sdkSession struct {
-	query     *Query
-	input     chan SDKUserMessage
-	sessionID string
+	query       *Query
+	sessionID   string
+	firstSend   bool
+	pendingOpts SDKSessionOptions
 }
 
 // CreateSession creates a new V2 session.
+// The session is lazy — the underlying query starts on the first Send() call.
 func CreateSession(opts SDKSessionOptions) (SDKSession, error) {
-	input := make(chan SDKUserMessage, 1)
-	q := NewQuery(QueryParams{
-		Prompt: input,
-		Options: &Options{
-			Model:           &opts.Model,
-			AllowedTools:    opts.AllowedTools,
-			DisallowedTools: opts.DisallowedTools,
-			PermissionMode:  opts.PermissionMode,
-		},
-	})
-	return &sdkSession{query: q, input: input}, nil
+	return &sdkSession{pendingOpts: opts, firstSend: true}, nil
 }
 
 // ResumeSession resumes an existing V2 session by ID.
 func ResumeSession(sessionID string, opts SDKSessionOptions) (SDKSession, error) {
-	input := make(chan SDKUserMessage, 1)
-	q := NewQuery(QueryParams{
-		Prompt: input,
-		Options: &Options{
-			Model:          &opts.Model,
-			Resume:         &sessionID,
-			AllowedTools:   opts.AllowedTools,
-			DisallowedTools: opts.DisallowedTools,
-			PermissionMode: opts.PermissionMode,
-		},
-	})
-	return &sdkSession{query: q, input: input, sessionID: sessionID}, nil
+	return &sdkSession{
+		pendingOpts: opts,
+		sessionID:   sessionID,
+		firstSend:   true,
+	}, nil
 }
 
 // Prompt is a convenience function for single-turn V2 queries.
@@ -85,28 +73,62 @@ func (s *sdkSession) SessionID() string {
 }
 
 func (s *sdkSession) Send(message interface{}) error {
+	var prompt string
 	switch m := message.(type) {
 	case string:
-		s.input <- SDKUserMessage{
-			Type:      "user",
-			Message:   mustMarshal(map[string]interface{}{"role": "user", "content": m}),
-			SessionID: s.sessionID,
-		}
+		prompt = m
 	case SDKUserMessage:
-		s.input <- m
+		// Extract text content from structured message
+		var parsed struct {
+			Content string `json:"content"`
+		}
+		json.Unmarshal(m.Message, &parsed)
+		prompt = parsed.Content
 	case *SDKUserMessage:
-		s.input <- *m
+		var parsed struct {
+			Content string `json:"content"`
+		}
+		json.Unmarshal(m.Message, &parsed)
+		prompt = parsed.Content
 	default:
 		return fmt.Errorf("Send: unsupported message type %T, expected string or SDKUserMessage", message)
 	}
-	return nil
+
+	if s.firstSend {
+		// Start the query with the first message as the prompt
+		s.firstSend = false
+		opts := &Options{
+			Model:           &s.pendingOpts.Model,
+			AllowedTools:    s.pendingOpts.AllowedTools,
+			DisallowedTools: s.pendingOpts.DisallowedTools,
+			PermissionMode:  s.pendingOpts.PermissionMode,
+		}
+		if s.sessionID != "" {
+			opts.Resume = &s.sessionID
+		}
+		s.query = NewQuery(QueryParams{
+			Prompt:  prompt,
+			Options: opts,
+		})
+		return nil
+	}
+
+	// For subsequent messages, we'd need streaming input mode.
+	// In --print mode, multi-turn is not supported within a single CLI invocation.
+	return fmt.Errorf("multi-turn Send not yet supported in print mode; use NewQuery with channel input")
 }
 
 func (s *sdkSession) Stream() <-chan SDKMessage {
+	if s.query == nil {
+		ch := make(chan SDKMessage)
+		close(ch)
+		return ch
+	}
 	return s.query.Messages()
 }
 
 func (s *sdkSession) Close() {
-	close(s.input)
-	s.query.Close()
+	if s.query != nil {
+		s.query.Close()
+	}
 }
