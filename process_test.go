@@ -76,10 +76,16 @@ func TestBuildProcessArgs_Resume(t *testing.T) {
 }
 
 func TestBuildProcessArgs_Cwd(t *testing.T) {
+	// Cwd is handled via cmd.Dir, not a CLI flag.
+	// Verify it's NOT in the args.
 	cwd := "/tmp/work"
 	opts := &Options{Cwd: &cwd}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--cwd", "/tmp/work")
+	for _, a := range args {
+		if a == "--cwd" {
+			t.Error("--cwd should not be in args (handled via cmd.Dir)")
+		}
+	}
 }
 
 func TestBuildProcessArgs_Debug(t *testing.T) {
@@ -97,9 +103,11 @@ func TestBuildProcessArgs_AllowedAndDisallowedTools(t *testing.T) {
 		DisallowedTools: []string{"Write"},
 	}
 	args := buildProcessArgs(opts, "")
-	assertContains(t, args, "--allowed-tool", "Bash")
-	assertContains(t, args, "--allowed-tool", "Read")
-	assertContains(t, args, "--disallowed-tool", "Write")
+	assertFlag(t, args, "--allowed-tools")
+	assertFlag(t, args, "Bash")
+	assertFlag(t, args, "Read")
+	assertFlag(t, args, "--disallowed-tools")
+	assertFlag(t, args, "Write")
 }
 
 func TestBuildProcessArgs_AdditionalDirectories(t *testing.T) {
@@ -222,7 +230,7 @@ func TestBuildProcessArgs_McpServers(t *testing.T) {
 		"my-server": map[string]interface{}{"command": "node", "args": []string{"server.js"}},
 	}}
 	args := buildProcessArgs(opts, "")
-	assertFlag(t, args, "--mcp-servers")
+	assertFlag(t, args, "--mcp-config")
 }
 
 func TestBuildProcessArgs_ThinkingConfig(t *testing.T) {

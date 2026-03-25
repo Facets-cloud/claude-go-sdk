@@ -96,9 +96,7 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		args = append(args, "--session-id", *opts.SessionID)
 	}
 
-	if opts.Cwd != nil {
-		args = append(args, "--cwd", *opts.Cwd)
-	}
+	// Cwd is handled by setting cmd.Dir on the subprocess, not via CLI flag.
 
 	if opts.Agent != nil {
 		args = append(args, "--agent", *opts.Agent)
@@ -164,12 +162,14 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		args = append(args, "--additional-directory", dir)
 	}
 
-	for _, tool := range opts.AllowedTools {
-		args = append(args, "--allowed-tool", tool)
+	if len(opts.AllowedTools) > 0 {
+		args = append(args, "--allowed-tools")
+		args = append(args, opts.AllowedTools...)
 	}
 
-	for _, tool := range opts.DisallowedTools {
-		args = append(args, "--disallowed-tool", tool)
+	if len(opts.DisallowedTools) > 0 {
+		args = append(args, "--disallowed-tools")
+		args = append(args, opts.DisallowedTools...)
 	}
 
 	for _, beta := range opts.Betas {
@@ -233,9 +233,20 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 
 	// MCP servers
 	if len(opts.McpServers) > 0 {
-		mcpJSON, err := json.Marshal(opts.McpServers)
+		// --mcp-config accepts JSON files or strings.
+		// Write to a temp file since the CLI may parse it as a file path.
+		mcpConfig := map[string]interface{}{
+			"mcpServers": opts.McpServers,
+		}
+		mcpJSON, err := json.Marshal(mcpConfig)
 		if err == nil {
-			args = append(args, "--mcp-servers", string(mcpJSON))
+			tmpFile, err := os.CreateTemp("", "claude-mcp-*.json")
+			if err == nil {
+				tmpFile.Write(mcpJSON)
+				tmpFile.Close()
+				args = append(args, "--mcp-config", tmpFile.Name())
+				// Note: temp file is cleaned up by OS on process exit
+			}
 		}
 	}
 
@@ -277,9 +288,11 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Prompt as positional argument (must be last)
+	// Prompt as positional argument (must be last).
+	// Use "--" to separate options from the positional prompt,
+	// preventing variadic options like --mcp-config from consuming it.
 	if prompt != "" {
-		args = append(args, prompt)
+		args = append(args, "--", prompt)
 	}
 
 	return args
