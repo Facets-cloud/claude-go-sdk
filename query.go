@@ -21,13 +21,16 @@ type QueryParams struct {
 
 // RewindFilesOptions configures a rewind operation.
 type RewindFilesOptions struct {
-	// FilePaths limits the rewind to specific files.
-	FilePaths []string `json:"filePaths,omitempty"`
+	DryRun bool `json:"dryRun,omitempty"`
 }
 
 // RewindFilesResult contains the result of a rewind operation.
 type RewindFilesResult struct {
-	RewindedFiles []string `json:"rewindedFiles"`
+	CanRewind    bool     `json:"canRewind"`
+	Error        *string  `json:"error,omitempty"`
+	FilesChanged []string `json:"filesChanged,omitempty"`
+	Insertions   *int     `json:"insertions,omitempty"`
+	Deletions    *int     `json:"deletions,omitempty"`
 }
 
 // Query manages a conversation with the Claude Code subprocess.
@@ -144,10 +147,13 @@ func (q *Query) ToggleMcpServer(ctx context.Context, serverName string, enabled 
 }
 
 // RewindFiles rewinds file changes to a specific message.
-func (q *Query) RewindFiles(ctx context.Context, userMessageID string, rewindOpts *RewindFilesOptions) (*RewindFilesResult, error) {
+func (q *Query) RewindFiles(ctx context.Context, userMessageID string, opts *RewindFilesOptions) (*RewindFilesResult, error) {
 	req := SDKControlRewindFilesRequest{
 		Subtype:       "rewind_files",
 		UserMessageID: userMessageID,
+	}
+	if opts != nil && opts.DryRun {
+		req.DryRun = Bool(true)
 	}
 	resp, err := q.sendControlRequestWithResponse(ctx, req)
 	if err != nil {
@@ -158,6 +164,89 @@ func (q *Query) RewindFiles(ctx context.Context, userMessageID string, rewindOpt
 		return nil, fmt.Errorf("parse rewind files response: %w", err)
 	}
 	return &result, nil
+}
+
+// ApplyFlagSettings merges settings into the flag settings layer mid-session.
+func (q *Query) ApplyFlagSettings(ctx context.Context, settings Settings) error {
+	settingsJSON, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+	var settingsMap map[string]interface{}
+	if err := json.Unmarshal(settingsJSON, &settingsMap); err != nil {
+		return fmt.Errorf("convert settings to map: %w", err)
+	}
+	return q.sendControlRequest(ctx, SDKControlApplyFlagSettingsRequest{
+		Subtype:  "apply_flag_settings",
+		Settings: settingsMap,
+	})
+}
+
+// SupportedCommands returns available slash commands from the init response.
+func (q *Query) SupportedCommands(ctx context.Context) ([]SlashCommand, error) {
+	initResp, err := q.InitializationResult(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return initResp.Commands, nil
+}
+
+// SupportedModels returns available models from the init response.
+func (q *Query) SupportedModels(ctx context.Context) ([]ModelInfo, error) {
+	initResp, err := q.InitializationResult(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return initResp.Models, nil
+}
+
+// SupportedAgents returns available subagents from the init response.
+func (q *Query) SupportedAgents(ctx context.Context) ([]AgentInfo, error) {
+	initResp, err := q.InitializationResult(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return initResp.Agents, nil
+}
+
+// AccountInfo returns authenticated account info from the init response.
+func (q *Query) AccountInfo(ctx context.Context) (*AccountInfo, error) {
+	initResp, err := q.InitializationResult(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return initResp.Account, nil
+}
+
+// SetMcpServers replaces the set of dynamically-managed MCP servers.
+func (q *Query) SetMcpServers(ctx context.Context, servers map[string]interface{}) (*McpSetServersResult, error) {
+	resp, err := q.sendControlRequestWithResponse(ctx, SDKControlMcpSetServersRequest{
+		Subtype: "mcp_set_servers",
+		Servers: servers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var result McpSetServersResult
+	if err := json.Unmarshal(resp.Response, &result); err != nil {
+		return nil, fmt.Errorf("parse mcp set servers response: %w", err)
+	}
+	return &result, nil
+}
+
+// StreamInput sends user messages to the query post-construction.
+func (q *Query) StreamInput(messages <-chan SDKUserMessage) error {
+	go func() {
+		for msg := range messages {
+			data, err := json.Marshal(msg)
+			if err != nil {
+				continue
+			}
+			data = append(data, '\n')
+			_, _ = q.process.Stdin().Write(data)
+		}
+	}()
+	return nil
 }
 
 // StopTask stops a running background task.

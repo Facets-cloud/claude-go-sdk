@@ -86,13 +86,13 @@ type SDKControlInitializeRequest struct {
 
 // SDKControlInitializeResponse is the response from session initialization.
 type SDKControlInitializeResponse struct {
-	Commands             []SlashCommand    `json:"commands"`
-	Agents               []json.RawMessage `json:"agents"` // []AgentInfo — raw until models.go is available
-	OutputStyle          string            `json:"output_style"`
-	AvailableOutputStyles []string         `json:"available_output_styles"`
-	Models               []json.RawMessage `json:"models"` // []ModelInfo — raw until models.go is available
-	Account              json.RawMessage   `json:"account"` // AccountInfo — raw until models.go is available
-	FastModeState        *FastModeState    `json:"fast_mode_state,omitempty"`
+	Commands              []SlashCommand `json:"commands"`
+	Agents                []AgentInfo    `json:"agents"`
+	OutputStyle           string         `json:"output_style"`
+	AvailableOutputStyles []string       `json:"available_output_styles"`
+	Models                []ModelInfo    `json:"models"`
+	Account               *AccountInfo   `json:"account"`
+	FastModeState         *FastModeState `json:"fast_mode_state,omitempty"`
 }
 
 // SDKControlSetPermissionModeRequest sets the permission mode.

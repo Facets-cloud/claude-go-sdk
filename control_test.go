@@ -638,11 +638,11 @@ func TestSDKControlInitializeResponse_RoundTrip(t *testing.T) {
 	fms := FastModeStateOff
 	resp := SDKControlInitializeResponse{
 		Commands:              []SlashCommand{{Name: "commit", Description: "Create a commit"}},
-		Agents:                []json.RawMessage{json.RawMessage(`{"id":"a1"}`)},
+		Agents:                []AgentInfo{{Name: "a1", Description: "agent 1"}},
 		OutputStyle:           "default",
 		AvailableOutputStyles: []string{"default", "concise"},
-		Models:                []json.RawMessage{json.RawMessage(`{"id":"m1"}`)},
-		Account:               json.RawMessage(`{"accountUuid":"acc-1"}`),
+		Models:                []ModelInfo{{Value: "m1", DisplayName: "Model 1", Description: "test"}},
+		Account:               &AccountInfo{Email: String("test@example.com")},
 		FastModeState:         &fms,
 	}
 	data, err := json.Marshal(resp)
