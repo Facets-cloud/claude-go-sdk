@@ -304,8 +304,8 @@ func (q *Query) run(prompt string) {
 		}
 	}
 
-	// Send initialization control request
-	q.sendInitialize()
+	// In --print mode, the CLI sends system:init automatically on stdout.
+	// No initialize control request needed — we capture init from the stream.
 
 	// Read stdout JSON lines
 	scanner := bufio.NewScanner(q.process.Stdout())
@@ -339,12 +339,25 @@ func (q *Query) run(prompt string) {
 			continue // skip unparseable lines
 		}
 
+		// Capture system:init as the initialization result
+		if sysMsg, ok := msg.(*SDKSystemMessage); ok && sysMsg.Subtype == "init" {
+			q.initOnce.Do(func() {
+				q.initResp = &SDKControlInitializeResponse{
+					OutputStyle: sysMsg.OutputStyle,
+				}
+				close(q.initCh)
+			})
+		}
+
 		select {
 		case q.messages <- msg:
 		case <-q.done:
 			return
 		}
 	}
+
+	// Ensure initCh is closed even if no init message arrived
+	q.initOnce.Do(func() { close(q.initCh) })
 
 	// Wait for process exit
 	if q.process != nil {

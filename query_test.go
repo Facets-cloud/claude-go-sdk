@@ -69,11 +69,14 @@ func TestQuery_Messages_ReceivesAssistantMessage(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(received))
+	if len(received) != 2 {
+		t.Fatalf("expected 2 messages (init + assistant), got %d", len(received))
 	}
-	if received[0].MessageType() != "assistant" {
-		t.Errorf("message type = %q, want 'assistant'", received[0].MessageType())
+	if received[0].MessageType() != "system" {
+		t.Errorf("message[0] type = %q, want 'system' (init)", received[0].MessageType())
+	}
+	if received[1].MessageType() != "assistant" {
+		t.Errorf("message[1] type = %q, want 'assistant'", received[1].MessageType())
 	}
 }
 
@@ -215,20 +218,7 @@ func TestQuery_PermissionCallback(t *testing.T) {
 		fp.stdoutW.Close()
 	}()
 
-	// Read init request and send matched response.
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-
-	respBody := fmt.Sprintf(`{"request_id":%q,"commands":[],"agents":[],"models":[],"account":{},"output_style":"concise","available_output_styles":[]}`, initEnv.RequestID)
-	initResp := map[string]interface{}{
-		"type":     "control_response",
-		"response": json.RawMessage(respBody),
-	}
-	data, _ := json.Marshal(initResp)
-	fp.stdoutW.Write(append(data, '\n'))
+	doInitHandshake(t, fp)
 
 	// Send a permission control request from stdout.
 	permReq := map[string]interface{}{
@@ -236,7 +226,7 @@ func TestQuery_PermissionCallback(t *testing.T) {
 		"request_id": "perm-1",
 		"request":    json.RawMessage(`{"subtype":"permission","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"tu-1"}`),
 	}
-	data, _ = json.Marshal(permReq)
+	data, _ := json.Marshal(permReq)
 	fp.stdoutW.Write(append(data, '\n'))
 
 	// Wait for the permission callback.
@@ -279,20 +269,7 @@ func TestQuery_InitializationResult(t *testing.T) {
 		fp.stdoutW.Close()
 	}()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-
-	// The response field must contain request_id for correlation.
-	respBody := fmt.Sprintf(`{"request_id":%q,"output_style":"concise","available_output_styles":["concise","verbose"],"commands":[],"agents":[],"models":[],"account":{}}`, initEnv.RequestID)
-	initResp := map[string]interface{}{
-		"type":     "control_response",
-		"response": json.RawMessage(respBody),
-	}
-	data, _ := json.Marshal(initResp)
-	fp.stdoutW.Write(append(data, '\n'))
+	doInitHandshake(t, fp)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -304,8 +281,8 @@ func TestQuery_InitializationResult(t *testing.T) {
 	if result == nil {
 		t.Fatal("InitializationResult returned nil")
 	}
-	if result.OutputStyle != "concise" {
-		t.Errorf("OutputStyle = %q, want 'concise'", result.OutputStyle)
+	if result.OutputStyle != "default" {
+		t.Errorf("OutputStyle = %q, want 'default'", result.OutputStyle)
 	}
 }
 
@@ -434,12 +411,7 @@ func TestQuery_PermissionDeny_NoHandler(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	doInitHandshake(t, fp)
 
 	permReq := map[string]interface{}{
 		"type":       "control_request",
@@ -482,12 +454,7 @@ func TestQuery_PermissionCallback_Error(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	doInitHandshake(t, fp)
 
 	permReq := map[string]interface{}{
 		"type":       "control_request",
@@ -539,12 +506,7 @@ func TestQuery_Elicitation_WithHandler(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	doInitHandshake(t, fp)
 
 	elicitReq := map[string]interface{}{
 		"type":       "control_request",
@@ -593,12 +555,7 @@ func TestQuery_Elicitation_NoHandler_Declines(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	doInitHandshake(t, fp)
 
 	elicitReq := map[string]interface{}{
 		"type":       "control_request",
@@ -634,12 +591,7 @@ func TestQuery_HookCallback_SendsEmptyResponse(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	doInitHandshake(t, fp)
 
 	hookReq := map[string]interface{}{
 		"type":       "control_request",
@@ -678,9 +630,7 @@ func TestQuery_InitializationResult_Timeout(t *testing.T) {
 		fp.stdoutW.Close()
 	}()
 
-	// Consume init request so run() doesn't block on stdin write.
-	consumeStdinLine(t, fp)
-
+	// No init message sent on stdout — InitializationResult should timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -736,14 +686,17 @@ func TestQuery_MultipleMessages(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(received))
+	if len(received) != 3 {
+		t.Fatalf("expected 3 messages (init + assistant + result), got %d", len(received))
 	}
-	if received[0].MessageType() != "assistant" {
-		t.Errorf("msg[0] type = %q, want 'assistant'", received[0].MessageType())
+	if received[0].MessageType() != "system" {
+		t.Errorf("msg[0] type = %q, want 'system'", received[0].MessageType())
 	}
-	if received[1].MessageType() != "result" {
-		t.Errorf("msg[1] type = %q, want 'result'", received[1].MessageType())
+	if received[1].MessageType() != "assistant" {
+		t.Errorf("msg[1] type = %q, want 'assistant'", received[1].MessageType())
+	}
+	if received[2].MessageType() != "result" {
+		t.Errorf("msg[2] type = %q, want 'result'", received[2].MessageType())
 	}
 }
 
@@ -771,49 +724,37 @@ func TestQuery_MalformedLines_Skipped(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 1 {
-		t.Fatalf("expected 1 valid message, got %d", len(received))
+	if len(received) != 2 {
+		t.Fatalf("expected 2 valid messages (init + assistant), got %d", len(received))
 	}
 }
 
-func TestQuery_SendInitialize_HasCapabilities(t *testing.T) {
+func TestQuery_InitFromStdout_CapturesInitMessage(t *testing.T) {
 	fp := newFakeProcess()
 	q := NewQuery(QueryParams{
 		Prompt: "test",
 		Options: &Options{
 			SpawnClaudeCodeProcess:     func(opts SpawnOptions) SpawnedProcess { return fp },
 			PathToClaudeCodeExecutable: fakeCLIPath(t),
-			CanUseTool: func(ctx context.Context, toolName string, input map[string]interface{}, opts CanUseToolOptions) (PermissionResult, error) {
-				return PermissionResultAllow{Behavior: PermissionBehaviorAllow}, nil
-			},
-			OnElicitation: func(ctx context.Context, req ElicitationRequest) (*ElicitationResult, error) {
-				return nil, nil
-			},
 		},
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	initLine := readStdinLine(t, fp)
-	var env struct {
-		Type    string          `json:"type"`
-		Request json.RawMessage `json:"request"`
-	}
-	json.Unmarshal([]byte(initLine), &env)
+	// Send init message on stdout (like the real CLI does in --print mode)
+	doInitHandshake(t, fp)
 
-	var req struct {
-		Subtype        string `json:"subtype"`
-		CanUseTool     bool   `json:"canUseTool"`
-		HasElicitation bool   `json:"hasElicitation"`
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	result, err := q.InitializationResult(ctx)
+	if err != nil {
+		t.Fatalf("InitializationResult: %v", err)
 	}
-	json.Unmarshal(env.Request, &req)
-	if req.Subtype != "initialize" {
-		t.Errorf("subtype = %q, want 'initialize'", req.Subtype)
+	if result == nil {
+		t.Fatal("expected non-nil init result")
 	}
-	if !req.CanUseTool {
-		t.Error("canUseTool should be true when CanUseTool handler is set")
-	}
-	if !req.HasElicitation {
-		t.Error("hasElicitation should be true when OnElicitation handler is set")
+	if result.OutputStyle != "default" {
+		t.Errorf("output_style = %q, want 'default'", result.OutputStyle)
 	}
 }
 
@@ -828,12 +769,12 @@ func consumeStdinLine(t *testing.T, fp *fakeProcess) {
 // doInitHandshake reads the init request and sends a matched init response.
 func doInitHandshake(t *testing.T, fp *fakeProcess) {
 	t.Helper()
-	initLine := readStdinLine(t, fp)
-	var initEnv struct {
-		RequestID string `json:"request_id"`
-	}
-	json.Unmarshal([]byte(initLine), &initEnv)
-	sendMatchedInitResponse(t, fp, initEnv.RequestID)
+	// In --print mode, the CLI sends system:init automatically on stdout.
+	// No stdin reading needed — just write the init message.
+	initMsg := `{"type":"system","subtype":"init","cwd":"/tmp","session_id":"test-session","tools":["Bash"],"mcp_servers":[],"model":"claude-sonnet-4-6","permissionMode":"default","slash_commands":[],"output_style":"default","skills":[],"plugins":[],"apiKeySource":"user","claude_code_version":"2.1.81","uuid":"init-uuid"}`
+	fp.stdoutW.Write(append([]byte(initMsg), '\n'))
+	// Small delay to let the goroutine process it
+	time.Sleep(10 * time.Millisecond)
 }
 
 // readStdinLine reads one newline-terminated line from the fake process stdin pipe.

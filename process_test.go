@@ -18,15 +18,18 @@ func TestBuildProcessArgs_NilOptions(t *testing.T) {
 	args := buildProcessArgs(nil, "hello")
 	assertContains(t, args, "--output-format", "stream-json")
 	assertFlag(t, args, "--verbose")
-	assertContains(t, args, "--prompt", "hello")
+	assertFlag(t, args, "--print")
+	// Prompt is a positional arg (last element)
+	if args[len(args)-1] != "hello" {
+		t.Errorf("expected prompt 'hello' as last arg, got %q", args[len(args)-1])
+	}
 }
 
 func TestBuildProcessArgs_EmptyPrompt(t *testing.T) {
 	args := buildProcessArgs(nil, "")
-	for _, a := range args {
-		if a == "--prompt" {
-			t.Error("--prompt should not be present with empty prompt")
-		}
+	// Last arg should not be a bare prompt
+	if len(args) > 0 && args[len(args)-1] == "" {
+		t.Error("empty prompt should not be appended")
 	}
 }
 
@@ -618,21 +621,12 @@ func TestBuildProcessArgs_PromptAtEnd(t *testing.T) {
 	model := "sonnet"
 	opts := &Options{Model: &model}
 	args := buildProcessArgs(opts, "my prompt")
-	// --prompt should be at the end.
-	lastFlagIdx := -1
-	for i, a := range args {
-		if a == "--prompt" {
-			lastFlagIdx = i
-		}
+	// Prompt is the last positional argument.
+	if len(args) == 0 {
+		t.Fatal("args should not be empty")
 	}
-	if lastFlagIdx == -1 {
-		t.Fatal("--prompt not found")
-	}
-	if lastFlagIdx+1 >= len(args) || args[lastFlagIdx+1] != "my prompt" {
-		t.Error("--prompt value should follow immediately")
-	}
-	if lastFlagIdx+2 != len(args) {
-		t.Error("--prompt should be the last flag pair")
+	if args[len(args)-1] != "my prompt" {
+		t.Errorf("expected prompt as last arg, got %q", args[len(args)-1])
 	}
 }
 

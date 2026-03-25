@@ -52,13 +52,14 @@ func defaultSpawn(opts SpawnOptions) SpawnedProcess {
 // buildProcessArgs constructs the CLI argument list from Options.
 func buildProcessArgs(opts *Options, prompt string) []string {
 	args := []string{
+		"--print",
 		"--output-format", "stream-json",
 		"--verbose",
 	}
 
 	if opts == nil {
 		if prompt != "" {
-			args = append(args, "--prompt", prompt)
+			args = append(args, prompt)
 		}
 		return args
 	}
@@ -276,9 +277,9 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// Prompt (must be last for some CLI parsers)
+	// Prompt as positional argument (must be last)
 	if prompt != "" {
-		args = append(args, "--prompt", prompt)
+		args = append(args, prompt)
 	}
 
 	return args
