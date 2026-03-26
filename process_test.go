@@ -16,75 +16,79 @@ import (
 // --- buildProcessArgs tests ---
 
 func TestBuildProcessArgs_NilOptions(t *testing.T) {
-	args := buildProcessArgs(nil, "hello")
+	args := buildProcessArgs(nil)
 	assertContains(t, args, "--output-format", "stream-json")
 	assertFlag(t, args, "--verbose")
-	assertFlag(t, args, "--print")
-	// Prompt is a positional arg (last element)
-	if args[len(args)-1] != "hello" {
-		t.Errorf("expected prompt 'hello' as last arg, got %q", args[len(args)-1])
+	assertContains(t, args, "--input-format", "stream-json")
+	// No --print flag in stream-json mode
+	for _, a := range args {
+		if a == "--print" {
+			t.Error("--print should not be present in stream-json input mode")
+		}
 	}
 }
 
-func TestBuildProcessArgs_EmptyPrompt(t *testing.T) {
-	args := buildProcessArgs(nil, "")
-	// Last arg should not be a bare prompt
-	if len(args) > 0 && args[len(args)-1] == "" {
-		t.Error("empty prompt should not be appended")
+func TestBuildProcessArgs_NoPromptArg(t *testing.T) {
+	args := buildProcessArgs(nil)
+	// Prompt is sent via stdin, not as a CLI arg
+	for _, a := range args {
+		if a == "--" {
+			t.Error("separator '--' should not be present (prompt sent via stdin)")
+		}
 	}
 }
 
 func TestBuildProcessArgs_Model(t *testing.T) {
 	model := "claude-sonnet-4-6"
 	opts := &Options{Model: &model}
-	args := buildProcessArgs(opts, "test")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--model", "claude-sonnet-4-6")
 }
 
 func TestBuildProcessArgs_PermissionMode(t *testing.T) {
 	mode := PermissionModeBypassPermissions
 	opts := &Options{PermissionMode: &mode}
-	args := buildProcessArgs(opts, "test")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--permission-mode", "bypassPermissions")
 }
 
 func TestBuildProcessArgs_MaxTurns(t *testing.T) {
 	turns := 5
 	opts := &Options{MaxTurns: &turns}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--max-turns", "5")
 }
 
 func TestBuildProcessArgs_MaxBudgetUsd(t *testing.T) {
 	budget := 10.50
 	opts := &Options{MaxBudgetUsd: &budget}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--max-budget-usd", "10.50")
 }
 
 func TestBuildProcessArgs_Continue(t *testing.T) {
 	cont := true
 	opts := &Options{Continue: &cont}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--continue")
 }
 
 func TestBuildProcessArgs_Resume(t *testing.T) {
 	sid := "session-123"
 	opts := &Options{Resume: &sid}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--resume", "session-123")
 }
 
 func TestBuildProcessArgs_Debug(t *testing.T) {
 	debugFile := "/tmp/debug.log"
 	opts := &Options{DebugFile: &debugFile}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--debug-file", "/tmp/debug.log")
 
 	debug := true
 	opts2 := &Options{Debug: &debug}
-	args2 := buildProcessArgs(opts2, "")
+	args2 := buildProcessArgs(opts2)
 	assertFlag(t, args2, "--debug")
 }
 
@@ -93,7 +97,7 @@ func TestBuildProcessArgs_AllowedAndDisallowedTools(t *testing.T) {
 		AllowedTools:    []string{"Bash", "Read"},
 		DisallowedTools: []string{"Write"},
 	}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--allowedTools", "Bash,Read")
 	assertContains(t, args, "--disallowedTools", "Write")
 }
@@ -102,7 +106,7 @@ func TestBuildProcessArgs_AdditionalDirectories(t *testing.T) {
 	opts := &Options{
 		AdditionalDirectories: []string{"/dir1", "/dir2"},
 	}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--add-dir", "/dir1")
 	assertContains(t, args, "--add-dir", "/dir2")
 }
@@ -111,34 +115,34 @@ func TestBuildProcessArgs_Betas(t *testing.T) {
 	opts := &Options{
 		Betas: []SdkBeta{SdkBetaContext1M},
 	}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--betas", "context-1m-2025-08-07")
 }
 
 func TestBuildProcessArgs_ForkSession(t *testing.T) {
 	fork := true
 	opts := &Options{ForkSession: &fork}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--fork-session")
 }
 
 func TestBuildProcessArgs_NoPersistSession(t *testing.T) {
 	persist := false
 	opts := &Options{PersistSession: &persist}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--no-session-persistence")
 }
 
 func TestBuildProcessArgs_IncludePartialMessages(t *testing.T) {
 	partial := true
 	opts := &Options{IncludePartialMessages: &partial}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--include-partial-messages")
 }
 
 func TestBuildProcessArgs_SystemPromptString(t *testing.T) {
 	opts := &Options{SystemPrompt: "Be helpful"}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--system-prompt", "Be helpful")
 }
 
@@ -149,20 +153,20 @@ func TestBuildProcessArgs_SystemPromptPreset(t *testing.T) {
 		Preset: "claude_code",
 		Append: &append,
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--append-system-prompt", "Also be concise")
 }
 
 func TestBuildProcessArgs_ToolsStringSlice(t *testing.T) {
 	opts := &Options{Tools: []string{"Bash", "Read"}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--tools", "Bash,Read")
 }
 
 func TestBuildProcessArgs_DangerouslySkipPermissions(t *testing.T) {
 	skip := true
 	opts := &Options{AllowDangerouslySkipPermissions: &skip}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--allow-dangerously-skip-permissions")
 }
 
@@ -172,7 +176,7 @@ func TestBuildProcessArgs_ExtraArgs(t *testing.T) {
 		"custom-flag":   &v,
 		"boolean-flag":  nil,
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--custom-flag", "value")
 	assertFlag(t, args, "--boolean-flag")
 }
@@ -180,28 +184,28 @@ func TestBuildProcessArgs_ExtraArgs(t *testing.T) {
 func TestBuildProcessArgs_MaxThinkingTokens(t *testing.T) {
 	tokens := 8000
 	opts := &Options{MaxThinkingTokens: &tokens}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--max-thinking-tokens", "8000")
 }
 
 func TestBuildProcessArgs_Effort(t *testing.T) {
 	effort := "high"
 	opts := &Options{Effort: &effort}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--effort", "high")
 }
 
 func TestBuildProcessArgs_Agent(t *testing.T) {
 	agent := "my-agent"
 	opts := &Options{Agent: &agent}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--agent", "my-agent")
 }
 
 func TestBuildProcessArgs_FallbackModel(t *testing.T) {
 	fb := "claude-haiku-4-5-20251001"
 	opts := &Options{FallbackModel: &fb}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--fallback-model", "claude-haiku-4-5-20251001")
 }
 
@@ -209,7 +213,7 @@ func TestBuildProcessArgs_Sandbox(t *testing.T) {
 	opts := &Options{Sandbox: &SandboxSettings{
 		Enabled: boolPtr(true),
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--settings")
 }
 
@@ -217,8 +221,43 @@ func TestBuildProcessArgs_McpServers(t *testing.T) {
 	opts := &Options{McpServers: map[string]interface{}{
 		"my-server": map[string]interface{}{"command": "node", "args": []string{"server.js"}},
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--mcp-config")
+}
+
+func TestBuildProcessArgs_McpServers_FiltersSdkType(t *testing.T) {
+	opts := &Options{McpServers: map[string]interface{}{
+		"stdio-server": map[string]interface{}{"command": "node", "args": []string{"server.js"}},
+		"sdk-server":   map[string]interface{}{"type": "sdk", "serverName": "sdk-server"},
+	}}
+	args := buildProcessArgs(opts)
+	// --mcp-config should be present (stdio-server is not sdk type)
+	assertFlag(t, args, "--mcp-config")
+	// The JSON in --mcp-config should NOT contain sdk-server
+	for i, a := range args {
+		if a == "--mcp-config" && i+1 < len(args) {
+			cfg := args[i+1]
+			if strings.Contains(cfg, "sdk-server") {
+				t.Error("--mcp-config should not contain type:sdk servers")
+			}
+			if !strings.Contains(cfg, "stdio-server") {
+				t.Error("--mcp-config should contain non-sdk servers")
+			}
+		}
+	}
+}
+
+func TestBuildProcessArgs_McpServers_AllSdk(t *testing.T) {
+	opts := &Options{McpServers: map[string]interface{}{
+		"sdk-only": map[string]interface{}{"type": "sdk"},
+	}}
+	args := buildProcessArgs(opts)
+	// All servers are sdk type, so --mcp-config should not be present
+	for _, a := range args {
+		if a == "--mcp-config" {
+			t.Error("--mcp-config should not be present when all servers are type:sdk")
+		}
+	}
 }
 
 func TestBuildProcessArgs_ThinkingConfig_NoFlag(t *testing.T) {
@@ -226,7 +265,7 @@ func TestBuildProcessArgs_ThinkingConfig_NoFlag(t *testing.T) {
 	// Thinking config is handled via settings, not a CLI flag.
 	tc := ThinkingAdaptive()
 	opts := &Options{Thinking: &tc}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	for _, a := range args {
 		if a == "--thinking" {
 			// --thinking is valid now
@@ -239,7 +278,7 @@ func TestBuildProcessArgs_ThinkingConfig_NeverSendsJSON(t *testing.T) {
 	// which the CLI rejected as an unknown option.
 	tc := ThinkingAdaptive()
 	opts := &Options{Thinking: &tc}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	for _, a := range args {
 		if strings.Contains(a, `{"type"`) {
 			t.Errorf("args should not contain JSON thinking config, got: %q", a)
@@ -252,7 +291,7 @@ func TestBuildProcessArgs_Cwd_NeverInArgs(t *testing.T) {
 	// Working directory is handled via cmd.Dir on the subprocess.
 	cwd := "/tmp/work"
 	opts := &Options{Cwd: &cwd}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	for _, a := range args {
 		if a == "--cwd" {
 			t.Error("--cwd should NOT be in args (handled via cmd.Dir)")
@@ -264,62 +303,62 @@ func TestBuildProcessArgs_Plugins(t *testing.T) {
 	opts := &Options{Plugins: []SdkPluginConfig{
 		{Type: "local", Path: "/path/to/plugin"},
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--plugin-dir", "/path/to/plugin")
 }
 
 func TestBuildProcessArgs_SettingSources(t *testing.T) {
 	opts := &Options{SettingSources: []SettingSource{SettingSourceUser, SettingSourceProject}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--setting-sources", "user,project")
 }
 
 func TestBuildProcessArgs_PromptSuggestions(t *testing.T) {
 	ps := true
 	opts := &Options{PromptSuggestions: &ps}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	_ = args // no CLI flag for prompt suggestions
 }
 
 func TestBuildProcessArgs_AgentProgressSummaries(t *testing.T) {
 	aps := true
 	opts := &Options{AgentProgressSummaries: &aps}
-	_ = buildProcessArgs(opts, "")
+	_ = buildProcessArgs(opts)
 	// --agent-progress-summaries is not a CLI flag
 }
 
 func TestBuildProcessArgs_StrictMcpConfig(t *testing.T) {
 	strict := true
 	opts := &Options{StrictMcpConfig: &strict}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--strict-mcp-config")
 }
 
 func TestBuildProcessArgs_EnableFileCheckpointing(t *testing.T) {
 	efc := true
 	opts := &Options{EnableFileCheckpointing: &efc}
-	_ = buildProcessArgs(opts, "")
+	_ = buildProcessArgs(opts)
 	// --enable-file-checkpointing is not a CLI flag
 }
 
 func TestBuildProcessArgs_SessionID(t *testing.T) {
 	sid := "sess-abc"
 	opts := &Options{SessionID: &sid}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--session-id", "sess-abc")
 }
 
 func TestBuildProcessArgs_ResumeSessionAt(t *testing.T) {
 	rsa := "msg-uuid-123"
 	opts := &Options{ResumeSessionAt: &rsa}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--resume-session-at", "msg-uuid-123")
 }
 
 func TestBuildProcessArgs_PermissionPromptToolName(t *testing.T) {
 	tn := "my-permission-tool"
 	opts := &Options{PermissionPromptToolName: &tn}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--permission-prompt-tool", "my-permission-tool")
 }
 
@@ -612,19 +651,19 @@ func TestBuildProcessArgs_OutputFormat(t *testing.T) {
 		Type:   OutputFormatTypeJSONSchema,
 		Schema: map[string]interface{}{"type": "object"},
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--json-schema")
 }
 
 func TestBuildProcessArgs_SettingsString(t *testing.T) {
 	opts := &Options{Settings: "/path/to/settings.json"}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--settings", "/path/to/settings.json")
 }
 
 func TestBuildProcessArgs_SettingsObject(t *testing.T) {
 	opts := &Options{Settings: map[string]interface{}{"key": "val"}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--settings")
 }
 
@@ -632,7 +671,7 @@ func TestBuildProcessArgs_Agents(t *testing.T) {
 	opts := &Options{Agents: map[string]AgentDefinition{
 		"researcher": {Model: strPtr("sonnet")},
 	}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertFlag(t, args, "--agents")
 }
 
@@ -641,27 +680,27 @@ func TestBuildProcessArgs_ToolConfig(t *testing.T) {
 	opts := &Options{ToolConfig: &ToolConfig{
 		AskUserQuestion: &AskUserQuestionConfig{PreviewFormat: &pf},
 	}}
-	_ = buildProcessArgs(opts, "")
+	_ = buildProcessArgs(opts)
 	// --tool-config is not a CLI flag
 }
 
 func TestBuildProcessArgs_ToolPreset(t *testing.T) {
 	opts := &Options{Tools: ToolPreset{Type: "preset", Preset: "claude_code"}}
-	args := buildProcessArgs(opts, "")
+	args := buildProcessArgs(opts)
 	assertContains(t, args, "--tools", "default")
 }
 
-func TestBuildProcessArgs_PromptAtEnd(t *testing.T) {
+func TestBuildProcessArgs_NoPromptInArgs(t *testing.T) {
 	model := "sonnet"
 	opts := &Options{Model: &model}
-	args := buildProcessArgs(opts, "my prompt")
-	// Prompt is the last positional argument.
-	if len(args) == 0 {
-		t.Fatal("args should not be empty")
+	args := buildProcessArgs(opts)
+	// Prompt is sent via stdin in stream-json mode, not as a positional arg.
+	for _, a := range args {
+		if a == "--print" {
+			t.Error("--print should not be present")
+		}
 	}
-	if args[len(args)-1] != "my prompt" {
-		t.Errorf("expected prompt as last arg, got %q", args[len(args)-1])
-	}
+	assertContains(t, args, "--input-format", "stream-json")
 }
 
 // --- test helpers ---

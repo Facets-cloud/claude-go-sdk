@@ -56,16 +56,15 @@ func defaultSpawn(opts SpawnOptions) SpawnedProcess {
 
 // buildProcessArgs constructs the CLI argument list from Options.
 // Flags are cross-referenced with the TypeScript SDK source (sdk.mjs) for accuracy.
-func buildProcessArgs(opts *Options, prompt string) []string {
+// Prompt is no longer a positional arg — it is sent via stdin in the stream-json protocol.
+func buildProcessArgs(opts *Options) []string {
 	args := []string{
 		"--output-format", "stream-json",
 		"--verbose",
+		"--input-format", "stream-json",
 	}
 
 	if opts == nil {
-		if prompt != "" {
-			args = append(args, "--print", "--", prompt)
-		}
 		return args
 	}
 
@@ -176,14 +175,27 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		}
 	}
 
-	// MCP servers — pass as JSON string (matches TS SDK)
+	// MCP servers — pass as JSON string (matches TS SDK).
+	// Entries with type:"sdk" are excluded from --mcp-config; they are sent
+	// in the initialize control request as sdkMcpServers instead.
 	if len(opts.McpServers) > 0 {
-		mcpConfig := map[string]interface{}{
-			"mcpServers": opts.McpServers,
+		filtered := make(map[string]interface{}, len(opts.McpServers))
+		for name, cfg := range opts.McpServers {
+			if m, ok := cfg.(map[string]interface{}); ok {
+				if t, _ := m["type"].(string); t == "sdk" {
+					continue
+				}
+			}
+			filtered[name] = cfg
 		}
-		mcpJSON, err := json.Marshal(mcpConfig)
-		if err == nil {
-			args = append(args, "--mcp-config", string(mcpJSON))
+		if len(filtered) > 0 {
+			mcpConfig := map[string]interface{}{
+				"mcpServers": filtered,
+			}
+			mcpJSON, err := json.Marshal(mcpConfig)
+			if err == nil {
+				args = append(args, "--mcp-config", string(mcpJSON))
+			}
 		}
 	}
 
@@ -304,12 +316,6 @@ func buildProcessArgs(opts *Options, prompt string) []string {
 		} else {
 			args = append(args, "--"+k, *v)
 		}
-	}
-
-	// Prompt — in print mode, use --print with positional arg.
-	// Use "--" separator to prevent variadic flags from consuming the prompt.
-	if prompt != "" {
-		args = append(args, "--print", "--", prompt)
 	}
 
 	return args

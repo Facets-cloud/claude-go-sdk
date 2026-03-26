@@ -280,7 +280,7 @@ func (q *Query) run(prompt string) {
 		return
 	}
 
-	args := buildProcessArgs(q.opts, prompt)
+	args := buildProcessArgs(q.opts)
 
 	spawnOpts := SpawnOptions{
 		Command: cliPath,
