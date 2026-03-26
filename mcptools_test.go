@@ -2,6 +2,7 @@ package claudeagent
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -68,7 +69,6 @@ func TestCreateSdkMcpServer_DefaultVersion(t *testing.T) {
 	srv := CreateSdkMcpServer(CreateSdkMcpServerOptions{
 		Name: "test",
 	})
-	// Should not panic with empty tools
 	if srv.Instance == nil {
 		t.Error("Instance should not be nil")
 	}
@@ -109,7 +109,6 @@ func TestCreateSdkMcpServer_MultipleTools(t *testing.T) {
 
 func TestCreateSdkMcpServer_SkipsNilHandler(t *testing.T) {
 	td := Tool("no-handler", "Tool without handler")
-	// Handler is nil — should not panic
 
 	srv := CreateSdkMcpServer(CreateSdkMcpServerOptions{
 		Name:  "test",
@@ -142,9 +141,83 @@ func TestNewToolResultError(t *testing.T) {
 }
 
 func TestToolHandlerFunc_Assignable(t *testing.T) {
-	// Verify the re-exported type is usable
 	var handler ToolHandlerFunc = func(ctx context.Context, req CallToolRequest) (*CallToolResult, error) {
 		return NewToolResultText("ok"), nil
 	}
 	_ = handler
+}
+
+func TestMcpSdkServerConfigWithInstance_SerializesAsSdkType(t *testing.T) {
+	// Verify that McpSdkServerConfigWithInstance serializes to {"type":"sdk","name":"X"}
+	// The Instance field is NOT serialized — it's a live object.
+	srv := CreateSdkMcpServer(CreateSdkMcpServerOptions{
+		Name: "my-server",
+	})
+
+	data, err := json.Marshal(srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var parsed map[string]interface{}
+	json.Unmarshal(data, &parsed)
+
+	if parsed["type"] != "sdk" {
+		t.Errorf("type = %v, want 'sdk'", parsed["type"])
+	}
+	if parsed["name"] != "my-server" {
+		t.Errorf("name = %v, want 'my-server'", parsed["name"])
+	}
+	// Instance should NOT appear in JSON
+	if _, exists := parsed["instance"]; exists {
+		t.Error("Instance should not be serialized to JSON")
+	}
+}
+
+func TestMcpSdkServerConfigWithInstance_NotSuitableForPrintMode(t *testing.T) {
+	// IMPORTANT: In --print mode, McpSdkServerConfigWithInstance cannot work
+	// because the CLI doesn't know how to connect to an in-process server.
+	//
+	// The CLI receives {"type":"sdk","name":"X"} via --mcp-config which it
+	// can't use — it expects stdio/sse/http configs.
+	//
+	// True in-process MCP requires --input-format stream-json with the
+	// bidirectional control protocol (initialize with sdkMcpServers, then
+	// mcp_message control requests for JSON-RPC routing).
+	//
+	// For --print mode, use McpStdioServerConfig with an external server
+	// binary instead. See demos/mcp-inline/ for the pattern.
+
+	srv := CreateSdkMcpServer(CreateSdkMcpServerOptions{
+		Name: "test-server",
+	})
+
+	// When serialized for --mcp-config, the Instance is lost
+	mcpConfig := map[string]interface{}{
+		"mcpServers": map[string]interface{}{
+			"test-server": srv,
+		},
+	}
+	data, _ := json.Marshal(mcpConfig)
+	configStr := string(data)
+
+	// The JSON won't contain any callable server info — just {"type":"sdk","name":"test-server"}
+	if !contains(configStr, `"type":"sdk"`) {
+		t.Error("should contain sdk type")
+	}
+	// This config will NOT work with the CLI in --print mode
+	// The test documents this known limitation
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

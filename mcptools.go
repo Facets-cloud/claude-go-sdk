@@ -76,23 +76,36 @@ type CreateSdkMcpServerOptions struct {
 }
 
 // CreateSdkMcpServer creates an in-process MCP server backed by mcp-go.
-// Returns an McpSdkServerConfigWithInstance that can be passed to Options.McpServers.
+// Returns an McpSdkServerConfigWithInstance.
 //
-// Example:
+// IMPORTANT: True in-process MCP (where the server runs in the same Go process)
+// requires the bidirectional --input-format stream-json control protocol, which
+// the Go SDK does not yet implement (it currently uses --print mode).
 //
-//	srv := claudeagent.CreateSdkMcpServer(claudeagent.CreateSdkMcpServerOptions{
-//	    Name: "my-tools",
-//	    Tools: []claudeagent.SdkMcpToolDefinition{myTool},
-//	})
+// For now, use one of these approaches:
+//
+// 1. External stdio server (RECOMMENDED — works today):
 //
 //	q := claudeagent.NewQuery(claudeagent.QueryParams{
-//	    Prompt: "Use my custom tool",
+//	    Prompt: "Use my tool",
 //	    Options: &claudeagent.Options{
 //	        McpServers: map[string]interface{}{
-//	            "my-tools": srv,
+//	            "my-tools": claudeagent.McpStdioServerConfig{
+//	                Command: "go", Args: []string{"run", "./my-mcp-server"},
+//	            },
 //	        },
 //	    },
 //	})
+//
+// 2. Build a standalone server binary using CreateSdkMcpServer + mcp-go stdio:
+//
+//	// In my-mcp-server/main.go:
+//	srv := claudeagent.CreateSdkMcpServer(opts)
+//	mcpServer := srv.Instance.(*server.MCPServer)
+//	stdio := server.NewStdioServer(mcpServer)
+//	stdio.Listen(ctx, os.Stdin, os.Stdout)
+//
+// See demos/mcp-inline/ for a complete working example.
 func CreateSdkMcpServer(opts CreateSdkMcpServerOptions) McpSdkServerConfigWithInstance {
 	version := opts.Version
 	if version == "" {
