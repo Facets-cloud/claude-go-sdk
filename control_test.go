@@ -465,10 +465,6 @@ func TestControlRequestTypes_RoundTrip(t *testing.T) {
 		}},
 		{"initialize", SDKControlInitializeRequest{
 			Subtype:            "initialize",
-			ProtocolVersion:    1,
-			CanUseTool:         true,
-			HasHooks:           true,
-			HasElicitation:     true,
 			SystemPrompt:       strPtr("test"),
 			AppendSystemPrompt: strPtr("append"),
 			PromptSuggestions:  boolPtr(true),
@@ -733,6 +729,120 @@ func TestSDKControlRewindFilesRequest_NilDryRun(t *testing.T) {
 	}
 	if got.DryRun != nil {
 		t.Error("expected nil DryRun for empty request")
+	}
+}
+
+func TestSDKHookCallbackMatcherWire_JSON(t *testing.T) {
+	wire := SDKHookCallbackMatcherWire{
+		Matcher:         strPtr("Bash"),
+		HookCallbackIDs: []string{"hook_0", "hook_1"},
+		Timeout:         intPtr(30000),
+	}
+	data, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got SDKHookCallbackMatcherWire
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if *got.Matcher != "Bash" {
+		t.Errorf("got matcher %q", *got.Matcher)
+	}
+	if len(got.HookCallbackIDs) != 2 || got.HookCallbackIDs[0] != "hook_0" {
+		t.Errorf("got hookCallbackIds %v", got.HookCallbackIDs)
+	}
+	if *got.Timeout != 30000 {
+		t.Errorf("got timeout %d", *got.Timeout)
+	}
+}
+
+func TestSDKControlInitializeRequest_WithHooks(t *testing.T) {
+	req := SDKControlInitializeRequest{
+		Subtype: "initialize",
+		Hooks: map[string][]SDKHookCallbackMatcherWire{
+			"PreToolUse": {
+				{
+					Matcher:         strPtr("Bash"),
+					HookCallbackIDs: []string{"hook_0"},
+				},
+			},
+		},
+		SdkMcpServers: []string{"my-mcp-server"},
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	// Verify no legacy fields are present
+	for _, field := range []string{"protocolVersion", "canUseTool", "hasHooks", "hasElicitation"} {
+		if _, ok := got[field]; ok {
+			t.Errorf("legacy field %q should not be present", field)
+		}
+	}
+	// Verify hooks structure
+	hooks, ok := got["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("hooks should be a map")
+	}
+	preToolUse, ok := hooks["PreToolUse"].([]interface{})
+	if !ok || len(preToolUse) != 1 {
+		t.Fatal("PreToolUse should have 1 matcher")
+	}
+}
+
+func TestBuildControlSuccessResponse(t *testing.T) {
+	payload := map[string]interface{}{"allowed": true, "toolUseID": "tu-1"}
+	resp, err := BuildControlSuccessResponse("req-123", payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Type != "control_response" {
+		t.Errorf("got type %q", resp.Type)
+	}
+	var inner map[string]interface{}
+	if err := json.Unmarshal(resp.Response, &inner); err != nil {
+		t.Fatal(err)
+	}
+	if inner["subtype"] != "success" {
+		t.Errorf("got subtype %v", inner["subtype"])
+	}
+	if inner["request_id"] != "req-123" {
+		t.Errorf("got request_id %v", inner["request_id"])
+	}
+	respPayload, ok := inner["response"].(map[string]interface{})
+	if !ok {
+		t.Fatal("response should be a map")
+	}
+	if respPayload["allowed"] != true {
+		t.Errorf("got allowed %v", respPayload["allowed"])
+	}
+}
+
+func TestBuildControlErrorResponse(t *testing.T) {
+	resp, err := BuildControlErrorResponse("req-456", "something went wrong")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Type != "control_response" {
+		t.Errorf("got type %q", resp.Type)
+	}
+	var inner ControlErrorResponse
+	if err := json.Unmarshal(resp.Response, &inner); err != nil {
+		t.Fatal(err)
+	}
+	if inner.Subtype != "error" {
+		t.Errorf("got subtype %q", inner.Subtype)
+	}
+	if inner.RequestID != "req-456" {
+		t.Errorf("got request_id %q", inner.RequestID)
+	}
+	if inner.Error != "something went wrong" {
+		t.Errorf("got error %q", inner.Error)
 	}
 }
 

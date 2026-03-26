@@ -67,20 +67,26 @@ type SDKControlPermissionRequest struct {
 }
 
 // SDKControlInitializeRequest initializes the SDK session.
+// Matches the TS SDK: no protocolVersion/canUseTool/hasHooks/hasElicitation fields.
 type SDKControlInitializeRequest struct {
-	Subtype                string                 `json:"subtype"` // "initialize"
-	ProtocolVersion        int                    `json:"protocolVersion,omitempty"`
-	CanUseTool             bool                   `json:"canUseTool,omitempty"`
-	HasHooks               bool                   `json:"hasHooks,omitempty"`
-	HasElicitation         bool                   `json:"hasElicitation,omitempty"`
-	Hooks                  map[string]interface{} `json:"hooks,omitempty"`
-	SdkMcpServers          []string               `json:"sdkMcpServers,omitempty"`
-	JSONSchema             map[string]interface{} `json:"jsonSchema,omitempty"`
-	SystemPrompt           *string                `json:"systemPrompt,omitempty"`
-	AppendSystemPrompt     *string                `json:"appendSystemPrompt,omitempty"`
-	Agents                 map[string]interface{} `json:"agents,omitempty"`
-	PromptSuggestions      *bool                  `json:"promptSuggestions,omitempty"`
-	AgentProgressSummaries *bool                  `json:"agentProgressSummaries,omitempty"`
+	Subtype                string                                      `json:"subtype"` // "initialize"
+	Hooks                  map[string][]SDKHookCallbackMatcherWire     `json:"hooks,omitempty"`
+	SdkMcpServers          []string                                    `json:"sdkMcpServers,omitempty"`
+	JSONSchema             map[string]interface{}                      `json:"jsonSchema,omitempty"`
+	SystemPrompt           *string                                     `json:"systemPrompt,omitempty"`
+	AppendSystemPrompt     *string                                     `json:"appendSystemPrompt,omitempty"`
+	Agents                 map[string]interface{}                      `json:"agents,omitempty"`
+	PromptSuggestions      *bool                                       `json:"promptSuggestions,omitempty"`
+	AgentProgressSummaries *bool                                       `json:"agentProgressSummaries,omitempty"`
+}
+
+// SDKHookCallbackMatcherWire is the wire format for hook callback matchers
+// sent in the initialize request. Each entry maps a matcher pattern to
+// callback IDs that the CLI will invoke via hook_callback control requests.
+type SDKHookCallbackMatcherWire struct {
+	Matcher         *string  `json:"matcher,omitempty"`
+	HookCallbackIDs []string `json:"hookCallbackIds"`
+	Timeout         *int     `json:"timeout,omitempty"`
 }
 
 // SDKControlInitializeResponse is the response from session initialization.
@@ -290,6 +296,43 @@ func ParseControlResponseSubtype(data json.RawMessage) (string, error) {
 		return "", fmt.Errorf("parse control response subtype: %w", err)
 	}
 	return env.Subtype, nil
+}
+
+// --- Control Response Builders ---
+
+// BuildControlSuccessResponse builds a control_response envelope with subtype:"success".
+// The payload is the inner response object (e.g., permission result, hook result).
+func BuildControlSuccessResponse(requestID string, payload interface{}) (SDKControlResponse, error) {
+	inner := map[string]interface{}{
+		"subtype":    "success",
+		"request_id": requestID,
+		"response":   payload,
+	}
+	raw, err := json.Marshal(inner)
+	if err != nil {
+		return SDKControlResponse{}, fmt.Errorf("marshal control success response: %w", err)
+	}
+	return SDKControlResponse{
+		Type:     "control_response",
+		Response: raw,
+	}, nil
+}
+
+// BuildControlErrorResponse builds a control_response envelope with subtype:"error".
+func BuildControlErrorResponse(requestID string, errMsg string) (SDKControlResponse, error) {
+	inner := ControlErrorResponse{
+		Subtype:   "error",
+		RequestID: requestID,
+		Error:     errMsg,
+	}
+	raw, err := json.Marshal(inner)
+	if err != nil {
+		return SDKControlResponse{}, fmt.Errorf("marshal control error response: %w", err)
+	}
+	return SDKControlResponse{
+		Type:     "control_response",
+		Response: raw,
+	}, nil
 }
 
 // --- Correlation Engine ---

@@ -381,22 +381,11 @@ func (q *Query) run(prompt string) {
 
 func (q *Query) sendInitialize() {
 	initReq := SDKControlInitializeRequest{
-		Subtype:        "initialize",
-		ProtocolVersion: 1,
+		Subtype: "initialize",
 	}
 
-	// Add capabilities
-	if q.opts != nil {
-		if q.opts.CanUseTool != nil {
-			initReq.CanUseTool = true
-		}
-		if q.opts.Hooks != nil {
-			initReq.HasHooks = true
-		}
-		if q.opts.OnElicitation != nil {
-			initReq.HasElicitation = true
-		}
-	}
+	// These fields will be populated by the query.go run() rewrite in Step 3.
+	// For now, just set the subtype.
 
 	reqID := uuid.New().String()
 	ch := q.correlation.Register(reqID)
