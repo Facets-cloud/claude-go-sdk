@@ -58,7 +58,10 @@ func defaultSpawn(opts SpawnOptions) SpawnedProcess {
 // Flags are cross-referenced with the TypeScript SDK source (sdk.mjs) for accuracy.
 // Prompt is no longer a positional arg — it is sent via stdin in the stream-json protocol.
 func buildProcessArgs(opts *Options) []string {
+	// --print is REQUIRED: --input-format and --output-format only work with --print.
+	// See: claude --help → "--input-format (only works with --print)"
 	args := []string{
+		"--print",
 		"--output-format", "stream-json",
 		"--verbose",
 		"--input-format", "stream-json",

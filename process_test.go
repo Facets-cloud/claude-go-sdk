@@ -17,15 +17,10 @@ import (
 
 func TestBuildProcessArgs_NilOptions(t *testing.T) {
 	args := buildProcessArgs(nil)
+	assertFlag(t, args, "--print")
 	assertContains(t, args, "--output-format", "stream-json")
 	assertFlag(t, args, "--verbose")
 	assertContains(t, args, "--input-format", "stream-json")
-	// No --print flag in stream-json mode
-	for _, a := range args {
-		if a == "--print" {
-			t.Error("--print should not be present in stream-json input mode")
-		}
-	}
 }
 
 func TestBuildProcessArgs_NoPromptArg(t *testing.T) {
@@ -691,11 +686,8 @@ func TestBuildProcessArgs_NoPromptInArgs(t *testing.T) {
 	opts := &Options{Model: &model}
 	args := buildProcessArgs(opts)
 	// Prompt is sent via stdin in stream-json mode, not as a positional arg.
-	for _, a := range args {
-		if a == "--print" {
-			t.Error("--print should not be present")
-		}
-	}
+	// But --print IS required for --input-format to work.
+	assertFlag(t, args, "--print")
 	assertContains(t, args, "--input-format", "stream-json")
 }
 
