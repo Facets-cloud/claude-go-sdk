@@ -52,6 +52,7 @@ type Query struct {
 	hookCallbacks   map[string]HookCallback // callback_id -> handler
 	nextHookID      int
 	cancelControllers sync.Map // request_id -> context.CancelFunc
+	mcpManager      *SdkMcpServerManager
 }
 
 // NewQuery creates and starts a new query to Claude Code.
@@ -64,6 +65,7 @@ func NewQuery(params QueryParams) *Query {
 		done:          make(chan struct{}),
 		prompt:        params.Prompt,
 		hookCallbacks: make(map[string]HookCallback),
+		mcpManager:    NewSdkMcpServerManager(),
 	}
 
 	// Single-turn if prompt is a string (not a channel)
@@ -272,6 +274,7 @@ func (q *Query) Close() {
 	q.closeOnce.Do(func() {
 		close(q.done)
 		q.correlation.Close()
+		q.mcpManager.CloseAll()
 		if q.process != nil {
 			_ = q.process.Kill()
 		}
@@ -731,15 +734,30 @@ func (q *Query) handleElicitation(ctx context.Context, requestID string, request
 	q.sendControlResponse(requestID, result)
 }
 
-// handleMcpMessage handles mcp_message control requests (placeholder for Step 5).
+// handleMcpMessage handles mcp_message control requests by routing them to
+// the in-process MCP server transport.
 func (q *Query) handleMcpMessage(ctx context.Context, requestID string, request json.RawMessage) {
 	var req SDKControlMcpMessageRequest
 	if err := json.Unmarshal(request, &req); err != nil {
 		q.sendControlErrorResponse(requestID, "failed to parse mcp message request: "+err.Error())
 		return
 	}
-	// MCP message handling will be implemented in Step 5 (in-process MCP server bridge)
-	q.sendControlErrorResponse(requestID, "SDK MCP server not found: "+req.ServerName)
+
+	transport, ok := q.mcpManager.Get(req.ServerName)
+	if !ok {
+		q.sendControlErrorResponse(requestID, "SDK MCP server not found: "+req.ServerName)
+		return
+	}
+
+	mcpResp, err := handleMcpRequestResponse(transport, req.Message)
+	if err != nil {
+		q.sendControlErrorResponse(requestID, "MCP message handling failed: "+err.Error())
+		return
+	}
+
+	q.sendControlResponse(requestID, map[string]json.RawMessage{
+		"mcp_response": mcpResp,
+	})
 }
 
 func (q *Query) sendControlRequest(ctx context.Context, request interface{}) error {
