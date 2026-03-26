@@ -589,6 +589,131 @@ func TestQuery_HookCallback_UnknownCallbackID_Error(t *testing.T) {
 	}
 }
 
+func TestQuery_HookCallback_WithRegisteredHook(t *testing.T) {
+	fp := newFakeProcess()
+	hookCalled := make(chan bool, 1)
+
+	q := NewQuery(QueryParams{
+		Prompt: "test",
+		Options: &Options{
+			SpawnClaudeCodeProcess:     func(opts SpawnOptions) SpawnedProcess { return fp },
+			PathToClaudeCodeExecutable: fakeCLIPath(t),
+			Hooks: map[HookEvent][]HookCallbackMatcher{
+				"PreToolUse": {
+					{
+						Matcher: strPtr("Bash"),
+						Hooks: []HookCallback{
+							func(ctx context.Context, input HookInput, toolUseID *string) (HookJSONOutput, error) {
+								hookCalled <- true
+								return SyncHookJSONOutput{
+									Decision: strPtr("approve"),
+								}, nil
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer func() { q.Close(); fp.stdoutW.Close() }()
+
+	doInitHandshake(t, fp)
+
+	// The hook was registered as "hook_0" during initialize.
+	// Send a hook_callback with that callback_id.
+	hookReq := map[string]interface{}{
+		"type":       "control_request",
+		"request_id": "hook-reg-1",
+		"request":    json.RawMessage(`{"subtype":"hook_callback","callback_id":"hook_0","input":{"tool_name":"Bash"}}`),
+	}
+	data, _ := json.Marshal(hookReq)
+	fp.stdoutW.Write(append(data, '\n'))
+
+	// Wait for the hook callback to be called.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	select {
+	case <-hookCalled:
+		// Good
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for hook callback")
+	}
+
+	// Read the response.
+	line := readStdinLine(t, fp)
+	reqID, payload, isError, _ := parseResponsePayload(t, line)
+	if reqID != "hook-reg-1" {
+		t.Errorf("request_id = %q, want 'hook-reg-1'", reqID)
+	}
+	if isError {
+		t.Error("expected success response for registered hook callback")
+	}
+	var resp struct {
+		Decision string `json:"decision"`
+	}
+	json.Unmarshal(payload, &resp)
+	if resp.Decision != "approve" {
+		t.Errorf("decision = %q, want 'approve'", resp.Decision)
+	}
+}
+
+func TestQuery_ControlCancelRequest(t *testing.T) {
+	fp := newFakeProcess()
+	hookBlocked := make(chan struct{})
+
+	q := NewQuery(QueryParams{
+		Prompt: "test",
+		Options: &Options{
+			SpawnClaudeCodeProcess:     func(opts SpawnOptions) SpawnedProcess { return fp },
+			PathToClaudeCodeExecutable: fakeCLIPath(t),
+			Hooks: map[HookEvent][]HookCallbackMatcher{
+				"PreToolUse": {
+					{
+						Hooks: []HookCallback{
+							func(ctx context.Context, input HookInput, toolUseID *string) (HookJSONOutput, error) {
+								close(hookBlocked)
+								// Block until cancelled
+								<-ctx.Done()
+								return nil, ctx.Err()
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	defer func() { q.Close(); fp.stdoutW.Close() }()
+
+	doInitHandshake(t, fp)
+
+	// Send a hook_callback that will block
+	hookReq := map[string]interface{}{
+		"type":       "control_request",
+		"request_id": "hook-cancel-1",
+		"request":    json.RawMessage(`{"subtype":"hook_callback","callback_id":"hook_0","input":{}}`),
+	}
+	data, _ := json.Marshal(hookReq)
+	fp.stdoutW.Write(append(data, '\n'))
+
+	// Wait until the hook is actually blocked
+	<-hookBlocked
+
+	// Send cancel request
+	cancelReq := map[string]interface{}{
+		"type":       "control_cancel_request",
+		"request_id": "hook-cancel-1",
+	}
+	cancelData, _ := json.Marshal(cancelReq)
+	fp.stdoutW.Write(append(cancelData, '\n'))
+
+	// Read the error response (context cancelled)
+	line := readStdinLine(t, fp)
+	_, _, isError, _ := parseResponsePayload(t, line)
+	if !isError {
+		t.Error("expected error response from cancelled hook callback")
+	}
+}
+
 func TestQuery_InitializationResult_Timeout(t *testing.T) {
 	fp := newFakeProcess()
 	q := NewQuery(QueryParams{
