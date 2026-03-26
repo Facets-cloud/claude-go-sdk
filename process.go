@@ -22,7 +22,12 @@ type defaultSpawnedProcess struct {
 func (p *defaultSpawnedProcess) Stdin() io.WriteCloser  { return p.stdin }
 func (p *defaultSpawnedProcess) Stdout() io.ReadCloser  { return p.stdout }
 func (p *defaultSpawnedProcess) Wait() error            { return p.cmd.Wait() }
-func (p *defaultSpawnedProcess) Kill() error            { return p.cmd.Process.Kill() }
+func (p *defaultSpawnedProcess) Kill() error {
+	if p.cmd.Process == nil {
+		return nil
+	}
+	return p.cmd.Process.Kill()
+}
 
 // defaultSpawn spawns the Claude Code CLI as an os/exec subprocess.
 func defaultSpawn(opts SpawnOptions) SpawnedProcess {

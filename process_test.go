@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"os/exec"
 	"time"
 )
 
@@ -559,6 +560,18 @@ func TestProcessManager_EmptyLines(t *testing.T) {
 
 	if len(received) != 1 {
 		t.Fatalf("expected 1 message (ignoring empty lines), got %d", len(received))
+	}
+}
+
+func TestDefaultSpawnedProcess_Kill_NilProcess(t *testing.T) {
+	// Regression: Kill() panicked when cmd.Process was nil
+	// (CLI not found, permission denied, process already exited).
+	p := &defaultSpawnedProcess{
+		cmd: &exec.Cmd{}, // Process is nil — never started
+	}
+	err := p.Kill()
+	if err != nil {
+		t.Errorf("Kill() on nil process should return nil, got: %v", err)
 	}
 }
 
