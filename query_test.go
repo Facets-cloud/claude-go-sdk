@@ -69,14 +69,12 @@ func TestQuery_Messages_ReceivesAssistantMessage(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 2 {
-		t.Fatalf("expected 2 messages (init + assistant), got %d", len(received))
+	// In stream-json mode, init is handled via control_response (not a stream message).
+	if len(received) != 1 {
+		t.Fatalf("expected 1 message (assistant), got %d", len(received))
 	}
-	if received[0].MessageType() != "system" {
-		t.Errorf("message[0] type = %q, want 'system' (init)", received[0].MessageType())
-	}
-	if received[1].MessageType() != "assistant" {
-		t.Errorf("message[1] type = %q, want 'assistant'", received[1].MessageType())
+	if received[0].MessageType() != "assistant" {
+		t.Errorf("message[0] type = %q, want 'assistant'", received[0].MessageType())
 	}
 }
 
@@ -224,7 +222,7 @@ func TestQuery_PermissionCallback(t *testing.T) {
 	permReq := map[string]interface{}{
 		"type":       "control_request",
 		"request_id": "perm-1",
-		"request":    json.RawMessage(`{"subtype":"permission","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"tu-1"}`),
+		"request":    json.RawMessage(`{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"},"tool_use_id":"tu-1"}`),
 	}
 	data, _ := json.Marshal(permReq)
 	fp.stdoutW.Write(append(data, '\n'))
@@ -281,8 +279,8 @@ func TestQuery_InitializationResult(t *testing.T) {
 	if result == nil {
 		t.Fatal("InitializationResult returned nil")
 	}
-	if result.OutputStyle != "default" {
-		t.Errorf("OutputStyle = %q, want 'default'", result.OutputStyle)
+	if result.OutputStyle != "concise" {
+		t.Errorf("OutputStyle = %q, want 'concise'", result.OutputStyle)
 	}
 }
 
@@ -416,27 +414,19 @@ func TestQuery_PermissionDeny_NoHandler(t *testing.T) {
 	permReq := map[string]interface{}{
 		"type":       "control_request",
 		"request_id": "perm-deny-1",
-		"request":    json.RawMessage(`{"subtype":"permission","tool_name":"Bash","input":{"command":"rm -rf /"},"tool_use_id":"tu-d1"}`),
+		"request":    json.RawMessage(`{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf /"},"tool_use_id":"tu-d1"}`),
 	}
 	data, _ := json.Marshal(permReq)
 	fp.stdoutW.Write(append(data, '\n'))
 
 	line := readStdinLine(t, fp)
-	var respEnv struct {
-		Type     string          `json:"type"`
-		Response json.RawMessage `json:"response"`
+	_, _, isError, errMsg := parseResponsePayload(t, line)
+	// No handler: should send error response
+	if !isError {
+		t.Error("expected error response when no handler configured")
 	}
-	json.Unmarshal([]byte(line), &respEnv)
-	if respEnv.Type != "control_response" {
-		t.Errorf("type = %q, want 'control_response'", respEnv.Type)
-	}
-
-	var resp struct {
-		Behavior string `json:"behavior"`
-	}
-	json.Unmarshal(respEnv.Response, &resp)
-	if resp.Behavior != "deny" {
-		t.Errorf("behavior = %q, want 'deny'", resp.Behavior)
+	if errMsg == "" {
+		t.Error("expected non-empty error message")
 	}
 }
 
@@ -459,27 +449,18 @@ func TestQuery_PermissionCallback_Error(t *testing.T) {
 	permReq := map[string]interface{}{
 		"type":       "control_request",
 		"request_id": "perm-err-1",
-		"request":    json.RawMessage(`{"subtype":"permission","tool_name":"Bash","input":{},"tool_use_id":"tu-e1"}`),
+		"request":    json.RawMessage(`{"subtype":"can_use_tool","tool_name":"Bash","input":{},"tool_use_id":"tu-e1"}`),
 	}
 	data, _ := json.Marshal(permReq)
 	fp.stdoutW.Write(append(data, '\n'))
 
 	line := readStdinLine(t, fp)
-	var respEnv struct {
-		Response json.RawMessage `json:"response"`
+	_, _, isError, errMsg := parseResponsePayload(t, line)
+	if !isError {
+		t.Error("expected error response from failed permission callback")
 	}
-	json.Unmarshal([]byte(line), &respEnv)
-
-	var resp struct {
-		Behavior string `json:"behavior"`
-		Message  string `json:"message"`
-	}
-	json.Unmarshal(respEnv.Response, &resp)
-	if resp.Behavior != "deny" {
-		t.Errorf("behavior = %q, want 'deny'", resp.Behavior)
-	}
-	if resp.Message != "permission check failed" {
-		t.Errorf("message = %q, want 'permission check failed'", resp.Message)
+	if errMsg != "permission check failed" {
+		t.Errorf("error = %q, want 'permission check failed'", errMsg)
 	}
 }
 
@@ -525,20 +506,15 @@ func TestQuery_Elicitation_WithHandler(t *testing.T) {
 	}
 
 	line := readStdinLine(t, fp)
-	var respEnv struct {
-		Type     string          `json:"type"`
-		Response json.RawMessage `json:"response"`
+	_, payload, isError, _ := parseResponsePayload(t, line)
+	if isError {
+		t.Fatal("expected success response for elicitation")
 	}
-	json.Unmarshal([]byte(line), &respEnv)
-	if respEnv.Type != "control_response" {
-		t.Errorf("type = %q, want 'control_response'", respEnv.Type)
-	}
-
 	var resp struct {
 		Action  string                 `json:"action"`
 		Content map[string]interface{} `json:"content"`
 	}
-	json.Unmarshal(respEnv.Response, &resp)
+	json.Unmarshal(payload, &resp)
 	if resp.Action != "accept" {
 		t.Errorf("action = %q, want 'accept'", resp.Action)
 	}
@@ -566,21 +542,20 @@ func TestQuery_Elicitation_NoHandler_Declines(t *testing.T) {
 	fp.stdoutW.Write(append(data, '\n'))
 
 	line := readStdinLine(t, fp)
-	var respEnv struct {
-		Response json.RawMessage `json:"response"`
+	_, payload, isError, _ := parseResponsePayload(t, line)
+	if isError {
+		t.Fatal("expected success response for elicitation decline")
 	}
-	json.Unmarshal([]byte(line), &respEnv)
-
 	var resp struct {
 		Action string `json:"action"`
 	}
-	json.Unmarshal(respEnv.Response, &resp)
+	json.Unmarshal(payload, &resp)
 	if resp.Action != "decline" {
 		t.Errorf("action = %q, want 'decline'", resp.Action)
 	}
 }
 
-func TestQuery_HookCallback_SendsEmptyResponse(t *testing.T) {
+func TestQuery_HookCallback_UnknownCallbackID_Error(t *testing.T) {
 	fp := newFakeProcess()
 	q := NewQuery(QueryParams{
 		Prompt: "test",
@@ -596,22 +571,21 @@ func TestQuery_HookCallback_SendsEmptyResponse(t *testing.T) {
 	hookReq := map[string]interface{}{
 		"type":       "control_request",
 		"request_id": "hook-1",
-		"request":    json.RawMessage(`{"subtype":"hook_callback","hook_event":"PreToolUse","input":{}}`),
+		"request":    json.RawMessage(`{"subtype":"hook_callback","callback_id":"nonexistent","input":{}}`),
 	}
 	data, _ := json.Marshal(hookReq)
 	fp.stdoutW.Write(append(data, '\n'))
 
 	line := readStdinLine(t, fp)
-	var respEnv struct {
-		Type      string `json:"type"`
-		RequestID string `json:"request_id"`
+	reqID, _, isError, errMsg := parseResponsePayload(t, line)
+	if reqID != "hook-1" {
+		t.Errorf("request_id = %q, want 'hook-1'", reqID)
 	}
-	json.Unmarshal([]byte(line), &respEnv)
-	if respEnv.Type != "control_response" {
-		t.Errorf("type = %q, want 'control_response'", respEnv.Type)
+	if !isError {
+		t.Error("expected error response for unknown callback ID")
 	}
-	if respEnv.RequestID != "hook-1" {
-		t.Errorf("request_id = %q, want 'hook-1'", respEnv.RequestID)
+	if errMsg == "" {
+		t.Error("expected non-empty error message")
 	}
 }
 
@@ -686,17 +660,15 @@ func TestQuery_MultipleMessages(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 3 {
-		t.Fatalf("expected 3 messages (init + assistant + result), got %d", len(received))
+	// Init is now via control_response, not a stream message.
+	if len(received) != 2 {
+		t.Fatalf("expected 2 messages (assistant + result), got %d", len(received))
 	}
-	if received[0].MessageType() != "system" {
-		t.Errorf("msg[0] type = %q, want 'system'", received[0].MessageType())
+	if received[0].MessageType() != "assistant" {
+		t.Errorf("msg[0] type = %q, want 'assistant'", received[0].MessageType())
 	}
-	if received[1].MessageType() != "assistant" {
-		t.Errorf("msg[1] type = %q, want 'assistant'", received[1].MessageType())
-	}
-	if received[2].MessageType() != "result" {
-		t.Errorf("msg[2] type = %q, want 'result'", received[2].MessageType())
+	if received[1].MessageType() != "result" {
+		t.Errorf("msg[1] type = %q, want 'result'", received[1].MessageType())
 	}
 }
 
@@ -724,12 +696,13 @@ func TestQuery_MalformedLines_Skipped(t *testing.T) {
 		received = append(received, msg)
 	}
 
-	if len(received) != 2 {
-		t.Fatalf("expected 2 valid messages (init + assistant), got %d", len(received))
+	// Init is via control_response, not a stream message.
+	if len(received) != 1 {
+		t.Fatalf("expected 1 valid message (assistant), got %d", len(received))
 	}
 }
 
-func TestQuery_InitFromStdout_CapturesInitMessage(t *testing.T) {
+func TestQuery_InitFromControlResponse_CapturesInitResult(t *testing.T) {
 	fp := newFakeProcess()
 	q := NewQuery(QueryParams{
 		Prompt: "test",
@@ -740,7 +713,6 @@ func TestQuery_InitFromStdout_CapturesInitMessage(t *testing.T) {
 	})
 	defer func() { q.Close(); fp.stdoutW.Close() }()
 
-	// Send init message on stdout (like the real CLI does in --print mode)
 	doInitHandshake(t, fp)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -753,12 +725,41 @@ func TestQuery_InitFromStdout_CapturesInitMessage(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected non-nil init result")
 	}
-	if result.OutputStyle != "default" {
-		t.Errorf("output_style = %q, want 'default'", result.OutputStyle)
+	if result.OutputStyle != "concise" {
+		t.Errorf("output_style = %q, want 'concise'", result.OutputStyle)
 	}
 }
 
 // --- test helpers ---
+
+// parseResponsePayload extracts the inner response payload from the nested
+// control_response envelope: {type:"control_response", response:{subtype:"success", request_id:X, response:{...}}}
+func parseResponsePayload(t *testing.T, line string) (requestID string, payload json.RawMessage, isError bool, errMsg string) {
+	t.Helper()
+	var outer struct {
+		Type     string          `json:"type"`
+		Response json.RawMessage `json:"response"`
+	}
+	if err := json.Unmarshal([]byte(line), &outer); err != nil {
+		t.Fatalf("parse outer envelope: %v", err)
+	}
+	if outer.Type != "control_response" {
+		t.Fatalf("type = %q, want 'control_response'", outer.Type)
+	}
+	var inner struct {
+		Subtype   string          `json:"subtype"`
+		RequestID string          `json:"request_id"`
+		Response  json.RawMessage `json:"response"`
+		Error     string          `json:"error"`
+	}
+	if err := json.Unmarshal(outer.Response, &inner); err != nil {
+		t.Fatalf("parse inner envelope: %v", err)
+	}
+	if inner.Subtype == "error" {
+		return inner.RequestID, nil, true, inner.Error
+	}
+	return inner.RequestID, inner.Response, false, ""
+}
 
 // consumeStdinLine reads and discards one line from the fake process stdin.
 func consumeStdinLine(t *testing.T, fp *fakeProcess) {
@@ -766,14 +767,31 @@ func consumeStdinLine(t *testing.T, fp *fakeProcess) {
 	_ = readStdinLine(t, fp)
 }
 
-// doInitHandshake reads the init request and sends a matched init response.
+// doInitHandshake reads the user message and initialize request from stdin,
+// then sends back a control_response with matching request_id on stdout.
 func doInitHandshake(t *testing.T, fp *fakeProcess) {
 	t.Helper()
-	// In --print mode, the CLI sends system:init automatically on stdout.
-	// No stdin reading needed — just write the init message.
-	initMsg := `{"type":"system","subtype":"init","cwd":"/tmp","session_id":"test-session","tools":["Bash"],"mcp_servers":[],"model":"claude-sonnet-4-6","permissionMode":"default","slash_commands":[],"output_style":"default","skills":[],"plugins":[],"apiKeySource":"user","claude_code_version":"2.1.81","uuid":"init-uuid"}`
-	fp.stdoutW.Write(append([]byte(initMsg), '\n'))
-	// Small delay to let the goroutine process it
+
+	// 1. Read the user message written to stdin
+	consumeStdinLine(t, fp)
+
+	// 2. Read the initialize control_request from stdin
+	initLine := readStdinLine(t, fp)
+	var envelope struct {
+		Type      string `json:"type"`
+		RequestID string `json:"request_id"`
+	}
+	if err := json.Unmarshal([]byte(initLine), &envelope); err != nil {
+		t.Fatalf("parse init request: %v (line: %s)", err, initLine)
+	}
+	if envelope.Type != "control_request" {
+		t.Fatalf("expected control_request, got %q", envelope.Type)
+	}
+
+	// 3. Send back a control_response with the init response payload
+	sendMatchedInitResponse(t, fp, envelope.RequestID)
+
+	// Small delay to let the goroutine process the response
 	time.Sleep(10 * time.Millisecond)
 }
 
@@ -797,12 +815,18 @@ func readStdinLine(t *testing.T, fp *fakeProcess) string {
 }
 
 // sendControlResponse writes a generic control_response to the fake process stdout.
+// Uses the nested envelope format matching the TS SDK.
 func sendControlResponse(t *testing.T, fp *fakeProcess, requestID string) {
 	t.Helper()
-	resp := map[string]interface{}{
-		"type":       "control_response",
+	innerResp := map[string]interface{}{
+		"subtype":    "success",
 		"request_id": requestID,
 		"response":   json.RawMessage(`{}`),
+	}
+	innerJSON, _ := json.Marshal(innerResp)
+	resp := map[string]interface{}{
+		"type":     "control_response",
+		"response": json.RawMessage(innerJSON),
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
@@ -812,12 +836,18 @@ func sendControlResponse(t *testing.T, fp *fakeProcess, requestID string) {
 }
 
 // sendMatchedInitResponse sends a control_response matching the init request_id.
+// Uses the nested envelope format: {type:"control_response", response:{subtype:"success", request_id:X, response:{...}}}
 func sendMatchedInitResponse(t *testing.T, fp *fakeProcess, requestID string) {
 	t.Helper()
-	resp := map[string]interface{}{
-		"type":       "control_response",
+	innerResp := map[string]interface{}{
+		"subtype":    "success",
 		"request_id": requestID,
 		"response":   json.RawMessage(`{"commands":[],"agents":[],"models":[],"account":{},"output_style":"concise","available_output_styles":[]}`),
+	}
+	innerJSON, _ := json.Marshal(innerResp)
+	resp := map[string]interface{}{
+		"type":     "control_response",
+		"response": json.RawMessage(innerJSON),
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
