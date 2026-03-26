@@ -393,16 +393,21 @@ func (q *Query) run() {
 }
 
 // writeUserMessage sends the initial user message to stdin as JSON.
+// Matches TS SDK: message is {role:"user", content:[{type:"text", text:"..."}]}
 func (q *Query) writeUserMessage(text string) {
 	content := []map[string]string{{"type": "text", "text": text}}
-	contentJSON, err := json.Marshal(content)
+	messageObj := map[string]interface{}{
+		"role":    "user",
+		"content": content,
+	}
+	messageJSON, err := json.Marshal(messageObj)
 	if err != nil {
 		return
 	}
 	msg := SDKUserMessage{
 		Type:            "user",
 		SessionID:       "",
-		Message:         contentJSON,
+		Message:         messageJSON,
 		ParentToolUseID: nil,
 	}
 	data, err := json.Marshal(msg)

@@ -225,20 +225,20 @@ func TestBuildProcessArgs_McpServers(t *testing.T) {
 	assertFlag(t, args, "--mcp-config")
 }
 
-func TestBuildProcessArgs_McpServers_FiltersSdkType(t *testing.T) {
+func TestBuildProcessArgs_McpServers_SdkTypeBecomesStub(t *testing.T) {
 	opts := &Options{McpServers: map[string]interface{}{
 		"stdio-server": map[string]interface{}{"command": "node", "args": []string{"server.js"}},
 		"sdk-server":   map[string]interface{}{"type": "sdk", "serverName": "sdk-server"},
 	}}
 	args := buildProcessArgs(opts)
-	// --mcp-config should be present (stdio-server is not sdk type)
+	// --mcp-config should be present (both servers included, sdk as stub)
 	assertFlag(t, args, "--mcp-config")
-	// The JSON in --mcp-config should NOT contain sdk-server
+	// The JSON in --mcp-config should contain sdk-server as a stub {type:"sdk", name:"sdk-server"}
 	for i, a := range args {
 		if a == "--mcp-config" && i+1 < len(args) {
 			cfg := args[i+1]
-			if strings.Contains(cfg, "sdk-server") {
-				t.Error("--mcp-config should not contain type:sdk servers")
+			if !strings.Contains(cfg, "sdk-server") {
+				t.Error("--mcp-config should contain sdk-server as a stub")
 			}
 			if !strings.Contains(cfg, "stdio-server") {
 				t.Error("--mcp-config should contain non-sdk servers")
@@ -247,17 +247,13 @@ func TestBuildProcessArgs_McpServers_FiltersSdkType(t *testing.T) {
 	}
 }
 
-func TestBuildProcessArgs_McpServers_AllSdk(t *testing.T) {
+func TestBuildProcessArgs_McpServers_AllSdkStillPresent(t *testing.T) {
 	opts := &Options{McpServers: map[string]interface{}{
 		"sdk-only": map[string]interface{}{"type": "sdk"},
 	}}
 	args := buildProcessArgs(opts)
-	// All servers are sdk type, so --mcp-config should not be present
-	for _, a := range args {
-		if a == "--mcp-config" {
-			t.Error("--mcp-config should not be present when all servers are type:sdk")
-		}
-	}
+	// Even all-sdk servers should appear in --mcp-config as stubs (matches TS SDK)
+	assertFlag(t, args, "--mcp-config")
 }
 
 func TestBuildProcessArgs_ThinkingConfig_NoFlag(t *testing.T) {

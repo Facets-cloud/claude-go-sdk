@@ -176,21 +176,24 @@ func buildProcessArgs(opts *Options) []string {
 	}
 
 	// MCP servers — pass as JSON string (matches TS SDK).
-	// Entries with type:"sdk" are excluded from --mcp-config; they are sent
-	// in the initialize control request as sdkMcpServers instead.
+	// Entries with type:"sdk" and an "instance" key are replaced with
+	// {type:"sdk", name:X} stubs in --mcp-config. The actual server names
+	// are sent in the initialize control request as sdkMcpServers.
 	if len(opts.McpServers) > 0 {
-		filtered := make(map[string]interface{}, len(opts.McpServers))
+		mcpForCLI := make(map[string]interface{}, len(opts.McpServers))
 		for name, cfg := range opts.McpServers {
 			if m, ok := cfg.(map[string]interface{}); ok {
 				if t, _ := m["type"].(string); t == "sdk" {
+					// Replace with stub (matches TS SDK behavior)
+					mcpForCLI[name] = map[string]string{"type": "sdk", "name": name}
 					continue
 				}
 			}
-			filtered[name] = cfg
+			mcpForCLI[name] = cfg
 		}
-		if len(filtered) > 0 {
+		if len(mcpForCLI) > 0 {
 			mcpConfig := map[string]interface{}{
-				"mcpServers": filtered,
+				"mcpServers": mcpForCLI,
 			}
 			mcpJSON, err := json.Marshal(mcpConfig)
 			if err == nil {
