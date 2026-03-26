@@ -892,15 +892,13 @@ func consumeStdinLine(t *testing.T, fp *fakeProcess) {
 	_ = readStdinLine(t, fp)
 }
 
-// doInitHandshake reads the user message and initialize request from stdin,
+// doInitHandshake reads the initialize request and user message from stdin,
 // then sends back a control_response with matching request_id on stdout.
+// Order matches the TS SDK: initialize is sent BEFORE the user message.
 func doInitHandshake(t *testing.T, fp *fakeProcess) {
 	t.Helper()
 
-	// 1. Read the user message written to stdin
-	consumeStdinLine(t, fp)
-
-	// 2. Read the initialize control_request from stdin
+	// 1. Read the initialize control_request from stdin (sent first)
 	initLine := readStdinLine(t, fp)
 	var envelope struct {
 		Type      string `json:"type"`
@@ -913,8 +911,11 @@ func doInitHandshake(t *testing.T, fp *fakeProcess) {
 		t.Fatalf("expected control_request, got %q", envelope.Type)
 	}
 
-	// 3. Send back a control_response with the init response payload
+	// 2. Send back a control_response with the init response payload
 	sendMatchedInitResponse(t, fp, envelope.RequestID)
+
+	// 3. Read the user message written to stdin (sent after initialize)
+	consumeStdinLine(t, fp)
 
 	// Small delay to let the goroutine process the response
 	time.Sleep(10 * time.Millisecond)

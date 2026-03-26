@@ -316,18 +316,27 @@ func (q *Query) run() {
 		}
 	}
 
-	// --- Bidirectional protocol: send user message via stdin ---
-	if promptStr, ok := q.prompt.(string); ok && promptStr != "" {
-		q.writeUserMessage(promptStr)
-	}
+	// --- Bidirectional protocol ---
+	// Send initialize FIRST (registers hooks, MCP servers with CLI),
+	// then send the user message. This matches the TS SDK flow and
+	// prevents the CLI from auto-initializing on the user message
+	// before our initialize request arrives.
+	//
+	// Stdin writes run in a goroutine to avoid pipe deadlock: without a
+	// concurrent stdout reader, the process may block on stdout writes
+	// (e.g. the init response) which would prevent our stdin writes from
+	// completing, deadlocking both sides.
+	go func() {
+		q.sendInitialize()
 
-	// Send initialize control request
-	q.sendInitialize()
-
-	// If prompt is a channel, start streaming input
-	if ch, ok := q.prompt.(<-chan SDKUserMessage); ok {
-		go q.streamInputFromChannel(ch)
-	}
+		// Now send the user message (or start streaming from channel)
+		if promptStr, ok := q.prompt.(string); ok && promptStr != "" {
+			q.writeUserMessage(promptStr)
+		}
+		if ch, ok := q.prompt.(<-chan SDKUserMessage); ok {
+			q.streamInputFromChannel(ch)
+		}
+	}()
 
 	// Read stdout JSON lines
 	scanner := bufio.NewScanner(q.process.Stdout())
