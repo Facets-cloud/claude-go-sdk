@@ -27,13 +27,20 @@ func TestLive_BasicQuery(t *testing.T) {
 	})
 	defer q.Close()
 
+	// Check initialization via control_response (not stream message).
+	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer initCancel()
+	initResult, err := q.InitializationResult(initCtx)
+	if err != nil {
+		t.Fatalf("InitializationResult: %v", err)
+	}
+	if initResult == nil {
+		t.Error("expected non-nil init result")
+	}
+
 	var result string
-	var gotInit bool
 	for msg := range q.Messages() {
 		switch m := msg.(type) {
-		case *SDKSystemMessage:
-			gotInit = true
-			t.Logf("Init: model=%s, tools=%v", m.Model, m.Tools[:min(3, len(m.Tools))])
 		case *SDKAssistantMessage:
 			t.Logf("Assistant message received (uuid=%s)", m.UUID)
 		case *SDKResultSuccess:
@@ -44,9 +51,6 @@ func TestLive_BasicQuery(t *testing.T) {
 		}
 	}
 
-	if !gotInit {
-		t.Error("never received init message")
-	}
 	if result == "" {
 		t.Error("expected non-empty result")
 	}
@@ -171,9 +175,8 @@ func TestLive_AccountInfo(t *testing.T) {
 		t.Fatalf("AccountInfo: %v", err)
 	}
 
-	// In --print mode, account info is not available from system:init
-	// It's only available via the initialize control request (streaming mode)
-	t.Logf("Account: %v (nil expected in print mode)", account)
+	// Account info is available from the initialize control response.
+	t.Logf("Account: %v", account)
 
 	// Drain
 	for range q.Messages() {
@@ -197,10 +200,6 @@ func TestLive_MessageTypes(t *testing.T) {
 
 		// Verify we can type-switch on all message types
 		switch m := msg.(type) {
-		case *SDKSystemMessage:
-			if m.ClaudeCodeVersion == "" {
-				t.Error("missing claude_code_version in init")
-			}
 		case *SDKAssistantMessage:
 			var parsed struct {
 				Content []struct {
@@ -223,9 +222,7 @@ func TestLive_MessageTypes(t *testing.T) {
 	}
 
 	t.Logf("Message types received: %v", typeCounts)
-	if typeCounts["system"] == 0 {
-		t.Error("expected at least one system message")
-	}
+	// In stream-json mode, init is via control_response, not a stream message.
 	if typeCounts["result"] == 0 {
 		t.Error("expected a result message")
 	}
