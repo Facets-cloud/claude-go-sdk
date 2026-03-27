@@ -47,31 +47,50 @@ func main() {
 }
 ```
 
-### Streaming multi-turn conversation
+### Multi-turn conversation (for servers/chat apps)
+
+> **Important**: For multi-turn conversations (WebSocket chat, HTTP servers), use the **channel pattern**. Passing a string prompt creates a single-turn query that closes the CLI process after the first result. The channel pattern keeps the CLI process alive across turns.
 
 ```go
-input := make(chan claudeagent.SDKUserMessage)
+input := make(chan claudeagent.SDKUserMessage, 1)
 
 q := claudeagent.NewQuery(claudeagent.QueryParams{
-    Prompt: input,
+    Prompt: input,  // channel = multi-turn, CLI stays alive
     Options: &claudeagent.Options{
+        Model:        claudeagent.String("sonnet"),
         SystemPrompt: "You are a helpful coding assistant.",
     },
 })
 defer q.Close()
 
-// Send messages on the input channel
+// Read responses in a goroutine
 go func() {
-    input <- claudeagent.SDKUserMessage{
-        Type:      "user",
-        Message:   json.RawMessage(`{"role":"user","content":"Explain goroutines"}`),
-        SessionID: "session-1",
+    for msg := range q.Messages() {
+        switch m := msg.(type) {
+        case *claudeagent.SDKAssistantMessage:
+            // Parse and display assistant text
+        case *claudeagent.SDKResultSuccess:
+            fmt.Println("Turn complete:", m.Result)
+        }
     }
 }()
 
-for msg := range q.Messages() {
-    // Handle messages...
+// Send messages (each message starts a new turn)
+input <- claudeagent.SDKUserMessage{
+    Type:      "user",
+    Message:   json.RawMessage(`{"role":"user","content":[{"type":"text","text":"Explain goroutines"}]}`),
+    SessionID: "",
 }
+
+// Wait for result, then send another message for the next turn
+input <- claudeagent.SDKUserMessage{
+    Type:      "user",
+    Message:   json.RawMessage(`{"role":"user","content":[{"type":"text","text":"Now explain channels"}]}`),
+    SessionID: "",
+}
+
+// Close when done
+close(input)
 ```
 
 ### Custom permissions
@@ -155,6 +174,40 @@ This Go SDK tracks the official TypeScript SDK v0.2.81 with full type and functi
 ### Keeping in sync
 
 A `/sync-upstream` slash command is included for Claude Code users to check for and apply updates from the TypeScript SDK. See `docs/SYNC_PROMPT.md` for the manual process.
+
+## Common Pitfalls
+
+### Single-turn vs multi-turn
+
+| Pattern | When to use | CLI lifecycle |
+|---|---|---|
+| `Prompt: "string"` | One-shot queries, scripts, CI | CLI process exits after first result |
+| `Prompt: channel` | Chat apps, servers, multi-turn | CLI stays alive, send multiple messages |
+
+**Wrong** (for chat servers):
+```go
+// DON'T: Creates a new CLI process per message, loses context
+func handleMessage(text string) {
+    q := claudeagent.NewQuery(claudeagent.QueryParams{Prompt: text})
+    // ...
+}
+```
+
+**Correct** (for chat servers):
+```go
+// DO: One CLI process per session, send messages via channel
+input := make(chan claudeagent.SDKUserMessage, 1)
+q := claudeagent.NewQuery(claudeagent.QueryParams{Prompt: input})
+// Reuse q for all messages in the session
+```
+
+### Server deployment
+
+When running inside HTTP/WebSocket servers:
+- Set `Options.Env` explicitly (server processes may not inherit shell env vars like `ANTHROPIC_API_KEY`)
+- Set `Options.Cwd` to an absolute path
+- Use `Options.Stderr` callback to capture CLI errors for logging
+- The SDK pipes stderr from the CLI (not inherited from parent process)
 
 ## Examples
 

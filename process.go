@@ -17,16 +17,34 @@ type defaultSpawnedProcess struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
+	stderr io.ReadCloser
 }
 
 func (p *defaultSpawnedProcess) Stdin() io.WriteCloser  { return p.stdin }
 func (p *defaultSpawnedProcess) Stdout() io.ReadCloser  { return p.stdout }
+func (p *defaultSpawnedProcess) Stderr() io.ReadCloser  { return p.stderr }
 func (p *defaultSpawnedProcess) Wait() error            { return p.cmd.Wait() }
 func (p *defaultSpawnedProcess) Kill() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
 	return p.cmd.Process.Kill()
+}
+
+// drainStderr reads and discards stderr (or passes to callback).
+// Must be called in a goroutine after Start() to prevent the child
+// from blocking on stderr writes.
+func (p *defaultSpawnedProcess) drainStderr(callback func(string)) {
+	if p.stderr == nil {
+		return
+	}
+	scanner := bufio.NewScanner(p.stderr)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if callback != nil {
+			callback(line)
+		}
+	}
 }
 
 // defaultSpawn spawns the Claude Code CLI as an os/exec subprocess.
@@ -45,12 +63,17 @@ func defaultSpawn(opts SpawnOptions) SpawnedProcess {
 
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
-	cmd.Stderr = os.Stderr
+
+	// Capture stderr via pipe instead of inheriting os.Stderr.
+	// In server processes, inheriting the parent's stderr FD can cause
+	// FD leaks and prevents clean child process isolation.
+	stderr, _ := cmd.StderrPipe()
 
 	return &defaultSpawnedProcess{
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: stdout,
+		stderr: stderr,
 	}
 }
 

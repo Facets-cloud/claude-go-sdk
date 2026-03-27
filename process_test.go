@@ -717,3 +717,66 @@ func assertFlag(t *testing.T, args []string, flag string) {
 
 // suppress unused import warning
 var _ = bytes.NewBuffer
+
+func TestDefaultSpawn_StderrIsPiped(t *testing.T) {
+	// Verify stderr is a pipe, not os.Stderr (prevents FD inheritance in servers)
+	proc := defaultSpawn(SpawnOptions{
+		Command: "echo",
+		Args:    []string{"hello"},
+	})
+	dp, ok := proc.(*defaultSpawnedProcess)
+	if !ok {
+		t.Fatal("expected defaultSpawnedProcess")
+	}
+	if dp.stderr == nil {
+		t.Error("stderr should be piped, not nil (was os.Stderr before fix)")
+	}
+	if dp.Stderr() == nil {
+		t.Error("Stderr() should return the pipe reader")
+	}
+}
+
+func TestDefaultSpawnedProcess_DrainStderr(t *testing.T) {
+	proc := defaultSpawn(SpawnOptions{
+		Command: "sh",
+		Args:    []string{"-c", "echo error-line >&2"},
+	})
+	dp := proc.(*defaultSpawnedProcess)
+	dp.cmd.Start()
+
+	var lines []string
+	done := make(chan struct{})
+	go func() {
+		dp.drainStderr(func(line string) {
+			lines = append(lines, line)
+		})
+		close(done)
+	}()
+
+	dp.cmd.Wait()
+	<-done
+
+	if len(lines) == 0 {
+		t.Error("expected stderr output from child process")
+	}
+}
+
+func TestDefaultSpawnedProcess_DrainStderr_NilCallback(t *testing.T) {
+	// Should not panic with nil callback
+	proc := defaultSpawn(SpawnOptions{
+		Command: "sh",
+		Args:    []string{"-c", "echo error >&2"},
+	})
+	dp := proc.(*defaultSpawnedProcess)
+	dp.cmd.Start()
+	
+	done := make(chan struct{})
+	go func() {
+		dp.drainStderr(nil) // nil callback - just drain
+		close(done)
+	}()
+	
+	dp.cmd.Wait()
+	<-done
+	// No panic = pass
+}

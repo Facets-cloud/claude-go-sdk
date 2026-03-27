@@ -314,6 +314,9 @@ func (q *Query) run() {
 			q.err = fmt.Errorf("start claude process: %w", err)
 			return
 		}
+		// Drain stderr in background to prevent child from blocking on stderr writes.
+		// Forward to Options.Stderr callback if provided.
+		go dp.drainStderr(q.stderrCallback())
 	}
 
 	// --- Bidirectional protocol ---
@@ -390,6 +393,11 @@ func (q *Query) run() {
 		case <-q.done:
 			return
 		}
+	}
+
+	// Check if scanner hit an error (helps diagnose pipe/IO issues)
+	if err := scanner.Err(); err != nil {
+		q.err = fmt.Errorf("stdout scanner error: %w", err)
 	}
 
 	// Ensure initCh is closed even if no init message arrived
@@ -849,6 +857,13 @@ func (q *Query) cwd() string {
 func (q *Query) env() map[string]string {
 	if q.opts != nil {
 		return q.opts.Env
+	}
+	return nil
+}
+
+func (q *Query) stderrCallback() func(string) {
+	if q.opts != nil && q.opts.Stderr != nil {
+		return q.opts.Stderr
 	}
 	return nil
 }
